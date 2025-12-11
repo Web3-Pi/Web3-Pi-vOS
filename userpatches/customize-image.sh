@@ -61,6 +61,11 @@ rm /root/.not_logged_in_yet     # Remove any first-login instructions
 # chmod +x /etc/update-motd.d/*   # Enable motd
 #--------------------------------------------------------------------------------------------
 
+## Directories structure ####################################################################
+mkdir -p /opt/web3pi                                    # Create a directory for Web3 Pi
+chown -R ethereum:ethereum /opt/web3pi 					# Set ownership to 'ethereum' user
+#--------------------------------------------------------------------------------------------
+
 ## rc.local #################################################################################
 # Add rc.local file and rc-local.service
 cp /tmp/overlay/rc.local /etc/rc.local
@@ -104,3 +109,10 @@ apt-get update     # Update the package list to include the new repositories
 ## Install Ethereum clients #################################################################
 apt-get install -y nimbus-beacon-node nimbus-validator-client ethereum
 #--------------------------------------------------------------------------------------------
+
+## Clone rpi-eeprom #########################################################################
+# Ubuntu have old rpi-eeprom app
+git-force-clone -b master https://github.com/raspberrypi/rpi-eeprom /opt/web3pi/rpi-eeprom
+# This is later used in install.sh to update the firmware
+#--------------------------------------------------------------------------------------------
+
