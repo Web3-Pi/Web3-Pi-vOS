@@ -84,10 +84,15 @@ if [ "$(get_install_stage)" -eq 0 ]; then
     # Finalize 'ethereum' user setup after first boot
     echo "[rc.local] Setting up ethereum user home and permissions"
 
-    # Create home directory
+    # Create home directory for ethereum user
     mkdir -p /home/ethereum
     chown -R ethereum:ethereum /home/ethereum
     chmod 750 /home/ethereum
+
+    # Create home directory for signer user
+    mkdir -p /home/signer
+    chown -R signer:signer /home/signer
+    chmod 0700 /home/signer
 
     # Add user to additional groups
     for grp in sudo netdev systemd-journal dialout plugdev; do
@@ -105,6 +110,9 @@ if [ "$(get_install_stage)" -eq 0 ]; then
     # chage -d 0 ethereum
     #----------------------------------------------------------------------------------------
     
+    # Setup unattended upgrades
+    dpkg-reconfigure --priority=low unattended-upgrades
+
     # Zapisz znacznik, że operacje zostały wykonane
     touch "$INIT_FLAG_RC_LOCAL"
     set_install_stage 1

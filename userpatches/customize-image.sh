@@ -43,17 +43,15 @@ fi
 useradd -M -s /bin/bash ethereum
 echo "ethereum:ethereum" | chpasswd
 
-# Pre-create 'el' user without home directory
-useradd -M -s /bin/bash el
-# echo "el:el" | chpasswd
+echo "MARKPOINT"
+# Pre-create 'el'
+adduser --system --home /var/lib/el --group el
 
-# Pre-create 'cl' user without home directory
-useradd -M -s /bin/bash cl
-# echo "cl:cl" | chpasswd
+# Pre-create 'cl'
+adduser --system --home /var/lib/cl --group cl
 
-# Pre-create 'signer' user without home directory
-useradd -M -s /bin/bash signer
-# echo "signer:signer" | chpasswd
+# Pre-create 'signer'
+adduser --system --no-create-home --shell /usr/sbin/nologin --group signer
 #--------------------------------------------------------------------------------------------
 
 ## Misc #####################################################################################
@@ -81,6 +79,7 @@ apt update
 apt install -y software-properties-common apt-utils chrony avahi-daemon git git-extras build-essential
 apt install -y nvme-cli jq speedtest-cli file vim net-tools telnet apt-transport-https gdisk iotop 
 apt install -y screen bpytop
+apt install -y unattended-upgrades
 # development packages
 apt install -y python3-pip python3-netifaces python3-dev libpython3-dev python3-venv
 apt install -y gcc libraspberrypi-bin screen ccze iw flashrom figlet neofetch 
@@ -123,7 +122,9 @@ passwd --lock root
 # Disable root login via SSH
 sed -i 's/^PermitRootLogin yes/PermitRootLogin no/' /etc/ssh/sshd_config
 ## Disable password authentication via SSH
+#ToDo
 #sed -i 's/^PasswordAuthentication yes/PasswordAuthentication no/' /etc/ssh/sshd_config
+#sed -i 's/^#PasswordAuthentication yes/PasswordAuthentication no/' /etc/ssh/sshd_config
 #--------------------------------------------------------------------------------------------
 
 exit 0
