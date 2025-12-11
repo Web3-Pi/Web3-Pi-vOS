@@ -78,8 +78,7 @@ systemctl enable rc-local.service
 apt update
 apt install -y software-properties-common apt-utils chrony avahi-daemon git git-extras build-essential
 apt install -y nvme-cli jq speedtest-cli file vim net-tools telnet apt-transport-https gdisk iotop 
-apt install -y screen bpytop
-apt install -y unattended-upgrades
+apt install -y screen bpytop cryptsetup unattended-upgrades
 # development packages
 apt install -y python3-pip python3-netifaces python3-dev libpython3-dev python3-venv
 apt install -y gcc libraspberrypi-bin screen ccze iw flashrom figlet neofetch 
