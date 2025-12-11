@@ -116,3 +116,11 @@ git-force-clone -b master https://github.com/raspberrypi/rpi-eeprom /opt/web3pi/
 # This is later used in install.sh to update the firmware
 #--------------------------------------------------------------------------------------------
 
+## Basic Security hardening #######################################################################
+# Lock the root account
+passwd --lock root
+# Disable root login via SSH
+sed -i 's/^PermitRootLogin yes/PermitRootLogin no/' /etc/ssh/sshd_config
+## Disable password authentication via SSH
+#sed -i 's/^PasswordAuthentication yes/PasswordAuthentication no/' /etc/ssh/sshd_config
+#--------------------------------------------------------------------------------------------
