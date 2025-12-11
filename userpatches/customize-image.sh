@@ -89,3 +89,18 @@ ufw allow 22/tcp comment "SSH"
 ufw --force enable
 #--------------------------------------------------------------------------------------------
 
+## Add APT repository #######################################################################
+# Nimbus repository
+echo 'deb https://apt.status.im/nimbus all main' | tee /etc/apt/sources.list.d/nimbus.list
+# Import the GPG key
+curl https://apt.status.im/pubkey.asc -o /etc/apt/trusted.gpg.d/apt-status-im.asc
+
+# Ethereum PPA for Geth
+add-apt-repository -y ppa:ethereum/ethereum 
+
+apt-get update     # Update the package list to include the new repositories
+#--------------------------------------------------------------------------------------------
+
+## Install Ethereum clients #################################################################
+apt-get install -y nimbus-beacon-node nimbus-validator-client ethereum
+#--------------------------------------------------------------------------------------------
