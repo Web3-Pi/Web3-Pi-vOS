@@ -63,6 +63,7 @@ rm /root/.not_logged_in_yet     # Remove any first-login instructions
 
 ## Directories structure ####################################################################
 mkdir -p /opt/web3pi                                    # Create a directory for Web3 Pi
+mkdir -p /opt/web3pi/logs                               # Create a directory for Web3 Pi logs
 chown -R ethereum:ethereum /opt/web3pi 					# Set ownership to 'ethereum' user
 #--------------------------------------------------------------------------------------------
 
