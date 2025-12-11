@@ -81,3 +81,11 @@ apt install -y gcc libraspberrypi-bin screen ccze iw flashrom figlet neofetch
 #apt install -y iproute2 iputils-ping dnsutils gawk bsdutils # for Wan Failover script
 #apt install -y apcupsd # For UPS support
 #--------------------------------------------------------------------------------------------
+
+## UFW (firewall) ###########################################################################
+apt install -y ufw
+# ToDo: set up firewall rules
+ufw allow 22/tcp comment "SSH"
+ufw --force enable
+#--------------------------------------------------------------------------------------------
+
