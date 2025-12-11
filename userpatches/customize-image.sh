@@ -69,3 +69,15 @@ cp /tmp/overlay/rc-local.service /etc/systemd/system/rc-local.service
 systemctl enable rc-local.service
 #--------------------------------------------------------------------------------------------
 
+## Install APT packets ######################################################################
+# ToDo: cleanup unnecessary packages
+apt update
+apt install -y software-properties-common apt-utils chrony avahi-daemon git git-extras build-essential
+apt install -y nvme-cli jq speedtest-cli file vim net-tools telnet apt-transport-https gdisk iotop 
+apt install -y screen bpytop
+# development packages
+apt install -y python3-pip python3-netifaces python3-dev libpython3-dev python3-venv
+apt install -y gcc libraspberrypi-bin screen ccze iw flashrom figlet neofetch 
+#apt install -y iproute2 iputils-ping dnsutils gawk bsdutils # for Wan Failover script
+#apt install -y apcupsd # For UPS support
+#--------------------------------------------------------------------------------------------
