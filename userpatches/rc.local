@@ -7,3 +7,5 @@ echolog "RC.LOCAL START - RC.LOCAL START - RC.LOCAL START - RC.LOCAL START - RC.
 echolog " "
 timedatectl | echolog
 
+echo "[rc.local] - exit 0 at $(date '+%Y-%m-%d %H:%M:%S')"
+exit 0

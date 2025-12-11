@@ -124,3 +124,5 @@ sed -i 's/^PermitRootLogin yes/PermitRootLogin no/' /etc/ssh/sshd_config
 ## Disable password authentication via SSH
 #sed -i 's/^PasswordAuthentication yes/PasswordAuthentication no/' /etc/ssh/sshd_config
 #--------------------------------------------------------------------------------------------
+
+exit 0
