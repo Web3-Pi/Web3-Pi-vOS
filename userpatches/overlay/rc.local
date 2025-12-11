@@ -6,6 +6,7 @@ echo "[rc.local] - start at $(date '+%Y-%m-%d %H:%M:%S')"
 # Description: Logs messages with a timestamp prefix. If no arguments are provided,
 #              reads from stdin and logs each line. Outputs to console and appends to $LOGI file.
 LOGI="/opt/web3pi/logs/web3pi.log"
+INIT_FLAG_RC_LOCAL="/root/.rc.local.firstrun.done"
 echolog(){
     if [ $# -eq 0 ]
     then cat - | while read -r message
@@ -66,7 +67,32 @@ while [ $? -ne 0 ]; do
     ping -c 1 $pingServerAdr > /dev/null 2>&1
 done
 
-echolog "$(date): Connected - ${pingServerAdr}"  
+echolog "$(date): Connected - ${pingServerAdr}"
+
+## Mount LUKS partition on every boot ##################################################
+L_PART="/dev/nvme0n1p3"
+L_MAPPER="signer_keys"
+L_MOUNTPOINT="/home/signer/.keys"
+L_KEYFILE="/root/.luks_keyfile"
+
+# Only attempt if partition and keyfile exist
+if [ -b "$L_PART" ] && [ -f "$L_KEYFILE" ]; then
+    # Open LUKS if not already open
+    if ! lsblk -no NAME | grep -q "$L_MAPPER"; then
+        echolog "[LUKS] Opening encrypted partition..."
+        cryptsetup open $L_PART $L_MAPPER --key-file "$L_KEYFILE"
+    fi
+
+    # Mount if not already mounted
+    if [ -b "/dev/mapper/$L_MAPPER" ] && ! mountpoint -q "$L_MOUNTPOINT"; then
+        echolog "[LUKS] Mounting $L_MOUNTPOINT..."
+        mkdir -p "$L_MOUNTPOINT"
+        mount /dev/mapper/$L_MAPPER "$L_MOUNTPOINT"
+        chown signer:signer "$L_MOUNTPOINT"
+        chmod 700 "$L_MOUNTPOINT"
+    fi
+fi
+#---------------------------------------------------------------------------------------
 
 if [ "$(get_install_stage)" -eq 0 ]; then
     echo "[rc.local] - Wykonywanie operacji tylko przy pierwszym uruchomieniu [rc.local]..."
@@ -112,6 +138,81 @@ if [ "$(get_install_stage)" -eq 0 ]; then
     
     # Setup unattended upgrades
     dpkg-reconfigure --priority=low unattended-upgrades
+
+    ## LUKS setup for signer keys #############################################################
+    echolog "[rc.local] - LUKS setup for signer keys"
+
+    L_DISK="/dev/nvme0n1"
+    L_PART="${L_DISK}p3"
+    L_MAPPER="signer_keys"
+    L_MOUNTPOINT="/home/signer/.keys"
+    L_SIZE_END="-100MiB"   # 100 MiB partition for signer keys
+    L_KEYFILE="/root/.luks_keyfile"
+
+    echolog "[LUKS 1] Checking if partition $L_PART exists..."
+    if ! lsblk -no NAME | grep -q "nvme0n1p3"; then
+        echolog "[LUKS 1] Creating partition $L_PART..."
+        # Detect partition table type (GPT vs MBR)
+        PT_TYPE=$(parted -s $L_DISK print 2>/dev/null | grep "Partition Table" | awk '{print $3}')
+        if [ "$PT_TYPE" = "gpt" ]; then
+            parted -s $L_DISK -- mkpart signer "$L_SIZE_END" 100%
+        else
+            parted -s $L_DISK -- mkpart primary "$L_SIZE_END" 100%
+        fi
+        partprobe $L_DISK
+        sleep 1  # Wait for partition to appear
+    else
+        echolog "[LUKS 1] Partition already exists."
+    fi
+
+    # Verify partition was created
+    if ! lsblk -no NAME | grep -q "nvme0n1p3"; then
+        echolog "[LUKS] ERROR: Failed to create partition $L_PART. Skipping LUKS setup."
+    else
+
+    # Generate keyfile if it doesn't exist
+    if [ ! -f "$L_KEYFILE" ]; then
+        echolog "[LUKS] Generating keyfile..."
+        dd if=/dev/urandom of="$L_KEYFILE" bs=512 count=1 2>/dev/null
+        chmod 400 "$L_KEYFILE"
+    fi
+
+    echolog "[LUKS 2] Checking if $L_PART is already LUKS..."
+    if ! cryptsetup isLuks $L_PART; then
+        echolog "[LUKS 2] Formatting $L_PART as LUKS2..."
+        cryptsetup luksFormat $L_PART --type luks2 --cipher aes-xts-plain64 --key-size 512 --pbkdf argon2id --batch-mode --key-file "$L_KEYFILE"
+    else
+        echolog "[LUKS 2] $L_PART is already LUKS."
+    fi
+
+    echolog "[LUKS 3] Opening LUKS mapper..."
+    if ! lsblk -no NAME | grep -q "$L_MAPPER"; then
+        cryptsetup open $L_PART $L_MAPPER --key-file "$L_KEYFILE"
+    else
+        echolog "[LUKS 3] Mapper already open."
+    fi
+
+    echolog "[LUKS 4] Checking filesystem..."
+    if ! blkid /dev/mapper/$L_MAPPER | grep -q ext4; then
+        echolog "[LUKS 4] Creating ext4 filesystem..."
+        mkfs.ext4 /dev/mapper/$L_MAPPER
+    else
+        echolog "[LUKS 4] ext4 filesystem already exists."
+    fi
+
+    echolog "[LUKS 5] Preparing mountpoint..."
+    mkdir -p $L_MOUNTPOINT
+    chown signer:signer $L_MOUNTPOINT
+
+    echolog "[LUKS 6] Mounting encrypted partition..."
+    if ! mountpoint -q $L_MOUNTPOINT; then
+        mount /dev/mapper/$L_MAPPER $L_MOUNTPOINT
+    fi
+    chmod 700 $L_MOUNTPOINT
+
+    echolog "[LUKS] DONE."
+    fi  # End of partition verification check
+    #------------------------------------------------------------------------------------------
 
     # Zapisz znacznik, że operacje zostały wykonane
     touch "$INIT_FLAG_RC_LOCAL"
