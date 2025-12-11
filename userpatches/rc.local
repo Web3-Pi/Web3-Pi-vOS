@@ -1,0 +1,9 @@
+#!/bin/bash
+
+echo "[rc.local] - start at $(date '+%Y-%m-%d %H:%M:%S')"
+
+echolog " "
+echolog "RC.LOCAL START - RC.LOCAL START - RC.LOCAL START - RC.LOCAL START - RC.LOCAL START - RC.LOCAL START - RC.LOCAL START"
+echolog " "
+timedatectl | echolog
+
