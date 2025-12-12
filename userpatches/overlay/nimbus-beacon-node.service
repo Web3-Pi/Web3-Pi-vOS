@@ -17,10 +17,12 @@ WorkingDirectory=/var/lib/cl
 
 # Environment
 Environment=HOME=/var/lib/cl
+EnvironmentFile=/opt/web3pi/config
 
 # Nimbus beacon node command
 # Adjust parameters as needed for your setup
 ExecStart=/usr/bin/nimbus_beacon_node \
+    --network=${NETWORK} \
     --data-dir=/var/lib/cl \
     --el=http://127.0.0.1:8551 \
     --jwt-secret=/var/lib/el/jwt.hex \

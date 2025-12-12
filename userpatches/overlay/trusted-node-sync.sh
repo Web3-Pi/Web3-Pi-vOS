@@ -10,7 +10,13 @@
 
 set -e
 
-NETWORK="${1:-hoodi}"
+# Source config for default network
+CONFIG_FILE="/opt/web3pi/config"
+if [ -f "$CONFIG_FILE" ]; then
+    source "$CONFIG_FILE"
+fi
+
+NETWORK="${1:-${NETWORK:-hoodi}}"
 SERVER="$2"
 DATA_DIR="/var/lib/cl"
 SERVERS_FILE="/opt/web3pi/servers_${NETWORK}.txt"

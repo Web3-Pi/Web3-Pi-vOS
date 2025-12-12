@@ -1,0 +1,4 @@
+# Web3 Pi Staking Configuration
+# Change this value to switch networks
+# Valid options: hoodi, mainnet
+NETWORK=hoodi

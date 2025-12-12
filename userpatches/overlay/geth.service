@@ -16,11 +16,12 @@ WorkingDirectory=/var/lib/el
 
 # Environment
 Environment=HOME=/var/lib/el
+EnvironmentFile=/opt/web3pi/config
 
 # Geth command
 # Adjust parameters as needed for your setup
 ExecStart=/usr/bin/geth \
-    --hoodi \
+    --${NETWORK} \
     --datadir=/var/lib/el \
     --state.scheme=path \
     --port=30303 \

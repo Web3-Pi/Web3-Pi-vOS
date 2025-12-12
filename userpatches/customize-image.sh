@@ -66,6 +66,11 @@ mkdir -p /opt/web3pi/logs                               # Create a directory for
 chown -R ethereum:ethereum /opt/web3pi 					# Set ownership to 'ethereum' user
 #--------------------------------------------------------------------------------------------
 
+## Configuration file #######################################################################
+# Central configuration file (NETWORK=hoodi/mainnet)
+cp /tmp/overlay/config /opt/web3pi/config
+#--------------------------------------------------------------------------------------------
+
 ## rc.local #################################################################################
 # Add rc.local file and rc-local.service
 cp /tmp/overlay/rc.local /etc/rc.local
