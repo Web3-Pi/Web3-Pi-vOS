@@ -45,7 +45,6 @@ fi
 useradd -M -s /bin/bash ethereum
 echo "ethereum:ethereum" | chpasswd
 
-echo "MARKPOINT"
 # Pre-create 'el'
 adduser --system --home /var/lib/el --group el
 
@@ -75,6 +74,15 @@ cp /tmp/overlay/rc-local.service /etc/systemd/system/rc-local.service
 systemctl enable rc-local.service
 #--------------------------------------------------------------------------------------------
 
+## JWT secret for EL-CL communication #######################################################
+# Generate JWT secret (will be used by both Geth and Nimbus)
+openssl rand -hex 32 > /var/lib/el/jwt.hex
+chown el:el /var/lib/el/jwt.hex
+chmod 640 /var/lib/el/jwt.hex
+# Add 'cl' user to 'el' group so nimbus can read JWT
+usermod -aG el cl
+#--------------------------------------------------------------------------------------------
+
 ## Install APT packets ######################################################################
 # ToDo: cleanup unnecessary packages
 apt update
@@ -89,10 +97,10 @@ apt install -y screen bpytop cryptsetup unattended-upgrades
 #--------------------------------------------------------------------------------------------
 
 ## UFW (firewall) ###########################################################################
-apt install -y ufw
+#apt install -y ufw
 # ToDo: set up firewall rules
-ufw allow 22/tcp comment "SSH"
-ufw --force enable
+#ufw allow 22/tcp comment "SSH"
+#ufw --force enable
 #--------------------------------------------------------------------------------------------
 
 ## Add APT repository #######################################################################
@@ -111,11 +119,56 @@ apt-get update     # Update the package list to include the new repositories
 apt-get install -y nimbus-beacon-node nimbus-validator-client ethereum
 #--------------------------------------------------------------------------------------------
 
+
+## Geth service (Execution Layer) ###########################################################
+cp /tmp/overlay/geth.service /etc/systemd/system/geth.service
+# systemctl enable geth.service
+#--------------------------------------------------------------------------------------------
+
+## Nimbus beacon node service (Consensus Layer) #############################################
+cp /tmp/overlay/nimbus-beacon-node.service /etc/systemd/system/nimbus-beacon-node.service
+# systemctl enable nimbus-beacon-node.service
+#--------------------------------------------------------------------------------------------
+
+## Nimbus validator service #################################################################
+# Service for nimbus_validator_client (not enabled - manual start after LUKS unlock)
+cp /tmp/overlay/nimbus-validator.service /etc/systemd/system/nimbus-validator.service
+# Don't enable - started manually via unlock-validator.sh
+#--------------------------------------------------------------------------------------------
+
+## LUKS setup script ########################################################################
+# One-time script to create LUKS partition for validator keys
+cp /tmp/overlay/setup-luks.sh /opt/web3pi/setup-luks.sh
+chmod +x /opt/web3pi/setup-luks.sh
+#--------------------------------------------------------------------------------------------
+
+## LUKS unlock script #######################################################################
+# Script to unlock LUKS partition and mount /home/signer
+cp /tmp/overlay/unlock-luks.sh /opt/web3pi/unlock-luks.sh
+chmod +x /opt/web3pi/unlock-luks.sh
+#--------------------------------------------------------------------------------------------
+
+## Validator start script ###################################################################
+# Script to start validator (checks if LUKS is unlocked first)
+cp /tmp/overlay/start-validator.sh /opt/web3pi/start-validator.sh
+chmod +x /opt/web3pi/start-validator.sh
+#--------------------------------------------------------------------------------------------
+
+## Help script ##############################################################################
+# Help script for ethereum user (copied to /home/ethereum in rc.local)
+cp /tmp/overlay/help.sh /opt/web3pi/help.sh
+chmod +x /opt/web3pi/help.sh
+#--------------------------------------------------------------------------------------------
+
+systemctl daemon-reload
+
+
 ## Clone rpi-eeprom #########################################################################
 # Ubuntu have old rpi-eeprom app
 git-force-clone -b master https://github.com/raspberrypi/rpi-eeprom /opt/web3pi/rpi-eeprom
 # This is later used in install.sh to update the firmware
 #--------------------------------------------------------------------------------------------
+
 
 ## Basic Security hardening #######################################################################
 # Lock the root account

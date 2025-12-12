@@ -1,0 +1,44 @@
+[Unit]
+Description=Nimbus Beacon Node (Consensus Layer)
+Documentation=https://nimbus.guide/
+After=network-online.target geth.service
+Wants=network-online.target
+Requires=geth.service
+
+[Service]
+Type=simple
+User=cl
+Group=cl
+Restart=on-failure
+RestartSec=120
+
+# Working directory
+WorkingDirectory=/var/lib/cl
+
+# Environment
+Environment=HOME=/var/lib/cl
+
+# Nimbus beacon node command
+# Adjust parameters as needed for your setup
+ExecStart=/usr/bin/nimbus_beacon_node \
+    --data-dir=/var/lib/cl \
+    --el=http://127.0.0.1:8551 \
+    --jwt-secret=/var/lib/el/jwt.hex \
+    --rest \
+    --rest-address=127.0.0.1 \
+    --rest-port=5052 \
+    --rest-allow-origin='*' \
+    --tcp-port=9000 \
+    --udp-port=9000 \
+    --enr-auto-update
+    
+# Security hardening
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=/var/lib/cl
+ReadOnlyPaths=/var/lib/el/jwt.hex
+
+[Install]
+WantedBy=multi-user.target
