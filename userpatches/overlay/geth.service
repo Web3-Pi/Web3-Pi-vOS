@@ -24,8 +24,8 @@ ExecStart=/usr/bin/geth \
     --${NETWORK} \
     --datadir=/var/lib/el \
     --state.scheme=path \
-    --port=30303 \
-    --discovery.port=30303 \
+    --port=${GETH_PORT} \
+    --discovery.port=${GETH_PORT} \
     --http \
     --http.addr=127.0.0.1 \
     --http.port=8545 \

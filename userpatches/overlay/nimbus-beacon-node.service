@@ -30,8 +30,8 @@ ExecStart=/usr/bin/nimbus_beacon_node \
     --rest-address=127.0.0.1 \
     --rest-port=5052 \
     --rest-allow-origin='*' \
-    --tcp-port=9000 \
-    --udp-port=9000 \
+    --tcp-port=${NIMBUS_PORT} \
+    --udp-port=${NIMBUS_PORT} \
     --enr-auto-update
     
 # Security hardening
