@@ -57,7 +57,7 @@ adduser --system --no-create-home --shell /usr/sbin/nologin --group signer
 
 ## Misc #####################################################################################
 rm /root/.not_logged_in_yet     # Remove any first-login instructions
-# chmod +x /etc/update-motd.d/*   # Enable motd
+chmod +x /etc/update-motd.d/*   # Enable motd
 #--------------------------------------------------------------------------------------------
 
 ## Directories structure ####################################################################
@@ -184,6 +184,26 @@ chmod +x /opt/web3pi/start-validator.sh
 # Help script for ethereum user (copied to /home/ethereum in rc.local)
 cp /tmp/overlay/help.sh /opt/web3pi/help.sh
 chmod +x /opt/web3pi/help.sh
+#--------------------------------------------------------------------------------------------
+
+## Trusted node sync script #################################################################
+# Script for fast initial sync using checkpoint sync servers
+cp /tmp/overlay/trusted-node-sync.sh /opt/web3pi/trusted-node-sync.sh
+chmod +x /opt/web3pi/trusted-node-sync.sh
+
+# Checkpoint sync server lists
+cp /tmp/overlay/servers_hoodi.txt /opt/web3pi/servers_hoodi.txt
+cp /tmp/overlay/servers_mainnet.txt /opt/web3pi/servers_mainnet.txt
+#--------------------------------------------------------------------------------------------
+
+## SSH key management scripts ###############################################################
+# Script to add SSH public key
+cp /tmp/overlay/ssh-add-key.sh /opt/web3pi/ssh-add-key.sh
+chmod +x /opt/web3pi/ssh-add-key.sh
+
+# Script to disable SSH password authentication
+cp /tmp/overlay/ssh-disable-password.sh /opt/web3pi/ssh-disable-password.sh
+chmod +x /opt/web3pi/ssh-disable-password.sh
 #--------------------------------------------------------------------------------------------
 
 systemctl daemon-reload

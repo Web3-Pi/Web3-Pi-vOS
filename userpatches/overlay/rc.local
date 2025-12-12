@@ -116,7 +116,7 @@ if [ "$(get_install_stage)" -eq 0 ]; then
     # systemd-journal - allows viewing system logs with journalctl without using sudo
 
     # Force password change on first login (optional)
-    # chage -d 0 ethereum
+    chage -d 0 ethereum
     #----------------------------------------------------------------------------------------
     
     # Setup unattended upgrades
@@ -151,7 +151,7 @@ if [ "$(get_install_stage)" -eq 100 ]; then
   sleep 2
 elif [ "$(get_install_stage)" -ge 1 ]; then
   echo "[rc.local] - Run main installation script (.install.sh)"
-  /opt/web3pi/.install.sh
+#  /opt/web3pi/.install.sh
 fi
 
 echo "[rc.local] - exit 0 at $(date '+%Y-%m-%d %H:%M:%S')"
