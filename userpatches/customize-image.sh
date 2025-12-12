@@ -97,11 +97,37 @@ apt install -y screen bpytop cryptsetup unattended-upgrades
 #--------------------------------------------------------------------------------------------
 
 ## UFW (firewall) ###########################################################################
-#apt install -y ufw
-# ToDo: set up firewall rules
-#ufw allow 22/tcp comment "SSH"
-#ufw --force enable
-#--------------------------------------------------------------------------------------------
+apt install -y ufw
+
+# Disable IPv6 in UFW (don't manage IPv6 rules)
+sed -i 's/^IPV6=yes/IPV6=no/' /etc/default/ufw
+
+# Disable IPv6 at system level
+cat >> /etc/sysctl.d/99-disable-ipv6.conf << EOF
+net.ipv6.conf.all.disable_ipv6 = 1
+net.ipv6.conf.default.disable_ipv6 = 1
+net.ipv6.conf.lo.disable_ipv6 = 1
+EOF
+
+# Default policies
+ufw default deny incoming
+ufw default allow outgoing
+
+# SSH (rate limited)
+ufw limit 22/tcp comment "SSH (rate limited)"
+
+# Geth P2P
+ufw allow 30303/tcp comment "Geth P2P TCP"
+ufw allow 30303/udp comment "Geth P2P UDP"
+
+# Nimbus P2P
+ufw allow 9000/tcp comment "Nimbus P2P TCP"
+ufw allow 9000/udp comment "Nimbus P2P UDP"
+
+# Enable firewall
+ufw --force enable
+#-------------------------------------------------------------------------------------------
+
 
 ## Add APT repository #######################################################################
 # Nimbus repository
