@@ -25,16 +25,16 @@ echo ""
 if [ -n "$1" ]; then
     PUBLIC_KEY="$1"
 else
-    echo "Paste your SSH public key (ssh-ed25519 or ssh-rsa):"
+    echo "Paste your SSH public key (ssh-ed25519, ssh-rsa, or sk-ssh-ed25519 for FIDO2):"
     echo ""
     read -r PUBLIC_KEY
 fi
 
-# Validate key format
-if [[ ! "$PUBLIC_KEY" =~ ^ssh-(ed25519|rsa|ecdsa) ]]; then
+# Validate key format (including FIDO2 hardware keys)
+if [[ ! "$PUBLIC_KEY" =~ ^(ssh-(ed25519|rsa|ecdsa)|sk-(ssh-ed25519|ecdsa-sha2-nistp256)@openssh\.com) ]]; then
     echo ""
     echo "ERROR: Invalid SSH public key format."
-    echo "Key should start with: ssh-ed25519, ssh-rsa, or ssh-ecdsa"
+    echo "Key should start with: ssh-ed25519, ssh-rsa, sk-ssh-ed25519@openssh.com, etc."
     exit 1
 fi
 
