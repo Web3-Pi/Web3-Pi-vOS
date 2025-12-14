@@ -198,7 +198,14 @@ chmod +x /opt/web3pi/trusted-node-sync.sh
 
 # Checkpoint sync server lists
 cp /tmp/overlay/servers_hoodi.txt /opt/web3pi/servers_hoodi.txt
+cp /tmp/overlay/servers_holesky.txt /opt/web3pi/servers_holesky.txt
 cp /tmp/overlay/servers_mainnet.txt /opt/web3pi/servers_mainnet.txt
+#--------------------------------------------------------------------------------------------
+
+## Control Panel (TUI) ######################################################################
+# Interactive control panel using whiptail
+cp /tmp/overlay/control-panel.sh /opt/web3pi/control-panel.sh
+chmod +x /opt/web3pi/control-panel.sh
 #--------------------------------------------------------------------------------------------
 
 ## SSH key management scripts ###############################################################

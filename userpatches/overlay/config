@@ -1,6 +1,6 @@
 # Web3 Pi Staking Configuration
 
-# Network: hoodi or mainnet
+# Network: hoodi, holesky, or mainnet
 NETWORK=hoodi
 
 # Geth P2P port (TCP/UDP)

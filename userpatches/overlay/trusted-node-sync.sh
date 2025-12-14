@@ -4,7 +4,7 @@
 # Fast initial sync using checkpoint sync servers
 #
 # Usage: sudo /opt/web3pi/trusted-node-sync.sh [network] [server]
-#   network: hoodi (default) or mainnet
+#   network: hoodi (default), holesky, or mainnet
 #   server: optional checkpoint sync URL (uses server list if not provided)
 #
 
@@ -22,8 +22,8 @@ DATA_DIR="/var/lib/cl"
 SERVERS_FILE="/opt/web3pi/servers_${NETWORK}.txt"
 
 # Validate network parameter
-if [[ "$NETWORK" != "hoodi" && "$NETWORK" != "mainnet" ]]; then
-    echo "Error: Invalid network '$NETWORK'. Use 'hoodi' or 'mainnet'."
+if [[ "$NETWORK" != "hoodi" && "$NETWORK" != "holesky" && "$NETWORK" != "mainnet" ]]; then
+    echo "Error: Invalid network '$NETWORK'. Use 'hoodi', 'holesky', or 'mainnet'."
     exit 1
 fi
 
