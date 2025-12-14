@@ -625,107 +625,124 @@ monitoring_menu() {
     done
 }
 
+# Helper: Detect Nimbus backfill progress from journal logs
+get_nimbus_backfill() {
+    local LOG=$(journalctl -u nimbus-beacon-node -n 20 --no-pager 2>/dev/null | grep -o 'backfill: [^)]*%)' | tail -1)
+    if [ -n "$LOG" ]; then
+        echo "$LOG"
+    fi
+}
+
+# Helper: Detect Geth indexing progress from journal logs
+get_geth_indexing() {
+    local LOG=$(journalctl -u geth -n 20 --no-pager 2>/dev/null | grep -i 'index.*progress\|indexing' | tail -1)
+    if [ -n "$LOG" ]; then
+        echo "indexing in progress"
+    fi
+}
+
 monitoring_sync_status() {
-    INFO="═══════════════════════════════════════════════════════════\n"
-    INFO+="                    SYNC STATUS\n"
-    INFO+="═══════════════════════════════════════════════════════════\n\n"
+    while true; do
+        INFO=""
 
-    # Geth sync status (using JSON-RPC API)
-    INFO+="▶ GETH (Execution Layer)\n"
-    INFO+="─────────────────────────────────────────────────────────\n"
-    if systemctl is-active --quiet geth; then
-        # Query eth_syncing via JSON-RPC
-        GETH_SYNC=$(curl -sS --max-time 3 -H "Content-Type: application/json" \
-            --data '{"jsonrpc":"2.0","method":"eth_syncing","params":[],"id":1}' \
-            http://127.0.0.1:8545 2>/dev/null)
+        # Geth sync status
+        INFO+="GETH (Execution Layer)\n"
+        INFO+="─────────────────────────────────────────────\n"
+        if systemctl is-active --quiet geth; then
+            GETH_SYNC=$(curl -sS --max-time 3 -H "Content-Type: application/json" \
+                --data '{"jsonrpc":"2.0","method":"eth_syncing","params":[],"id":1}' \
+                http://127.0.0.1:8545 2>/dev/null)
 
-        if [ -n "$GETH_SYNC" ]; then
-            # Check if result is false (synced) or object (syncing)
-            # jq -e returns exit code 1 if result is false/null
-            if echo "$GETH_SYNC" | jq -e '.result == false' >/dev/null 2>&1; then
-                # Synced - get current block number
-                BLOCK_RESP=$(curl -sS --max-time 3 -H "Content-Type: application/json" \
-                    --data '{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}' \
-                    http://127.0.0.1:8545 2>/dev/null)
-                BLOCK_HEX=$(echo "$BLOCK_RESP" | jq -r '.result // "0x0"')
-                BLOCK=$(printf "%d" "$BLOCK_HEX" 2>/dev/null || echo "0")
-                INFO+="  Status: SYNCED ✓\n"
-                INFO+="  Block:  $BLOCK\n"
-            else
-                # Syncing - extract hex values
-                CURRENT_HEX=$(echo "$GETH_SYNC" | jq -r '.result.currentBlock // "0x0"')
-                HIGHEST_HEX=$(echo "$GETH_SYNC" | jq -r '.result.highestBlock // "0x0"')
+            if [ -n "$GETH_SYNC" ]; then
+                RESULT=$(echo "$GETH_SYNC" | jq -r '.result')
 
-                # Convert hex to decimal using printf
-                CURRENT=$(printf "%d" "$CURRENT_HEX" 2>/dev/null || echo "0")
-                HIGHEST=$(printf "%d" "$HIGHEST_HEX" 2>/dev/null || echo "0")
-
-                # Check if node has caught up (current >= highest means synced)
-                if [ "$HIGHEST" -gt 0 ] && [ "$CURRENT" -ge "$HIGHEST" ] 2>/dev/null; then
-                    INFO+="  Status: SYNCED ✓\n"
-                    INFO+="  Block:  $CURRENT\n"
-                elif [ "$HIGHEST" -gt 0 ] 2>/dev/null; then
-                    # Calculate progress: (current / highest) * 100
-                    PCT=$(awk "BEGIN {printf \"%.2f\", ($CURRENT / $HIGHEST) * 100}")
-                    INFO+="  Status: SYNCING\n"
-                    INFO+="  Progress: $PCT%\n"
-                    INFO+="  Blocks: $CURRENT / $HIGHEST\n"
+                if [ "$RESULT" = "false" ]; then
+                    BLOCK_RESP=$(curl -sS --max-time 3 -H "Content-Type: application/json" \
+                        --data '{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}' \
+                        http://127.0.0.1:8545 2>/dev/null)
+                    BLOCK_HEX=$(echo "$BLOCK_RESP" | jq -r '.result // "0x0"' | sed 's/0x//')
+                    BLOCK=$((16#${BLOCK_HEX:-0}))
+                    INDEXING=$(get_geth_indexing)
+                    if [ -n "$INDEXING" ]; then
+                        INFO+="  Status: HEAD SYNCED (indexing...)\n"
+                    else
+                        INFO+="  Status: SYNCED\n"
+                    fi
+                    INFO+="  Block:  $BLOCK\n"
                 else
-                    INFO+="  Status: SYNCING (starting...)\n"
+                    CURRENT_HEX=$(echo "$GETH_SYNC" | jq -r '.result.currentBlock // "0x0"' | sed 's/0x//')
+                    HIGHEST_HEX=$(echo "$GETH_SYNC" | jq -r '.result.highestBlock // "0x0"' | sed 's/0x//')
+                    CURRENT=$((16#${CURRENT_HEX:-0}))
+                    HIGHEST=$((16#${HIGHEST_HEX:-0}))
+                    INFO+="  Status: SYNCING\n"
                     INFO+="  Current Block: $CURRENT\n"
+                    INFO+="  Highest Block: $HIGHEST\n"
                 fi
-            fi
-        else
-            INFO+="  Status: Unable to query (API not responding)\n"
-        fi
-    else
-        INFO+="  Status: NOT RUNNING\n"
-    fi
-
-    # Nimbus sync status (using REST API)
-    INFO+="\n▶ NIMBUS (Consensus Layer)\n"
-    INFO+="─────────────────────────────────────────────────────────\n"
-    if systemctl is-active --quiet nimbus-beacon-node; then
-        NIMBUS_DATA=$(curl -s http://127.0.0.1:5052/eth/v1/node/syncing 2>/dev/null)
-        if [ -n "$NIMBUS_DATA" ]; then
-            IS_SYNCING=$(echo "$NIMBUS_DATA" | jq -r '.data.is_syncing // "unknown"')
-            HEAD_SLOT=$(echo "$NIMBUS_DATA" | jq -r '.data.head_slot // "0"')
-            SYNC_DIST=$(echo "$NIMBUS_DATA" | jq -r '.data.sync_distance // "0"')
-            IS_OPTIMISTIC=$(echo "$NIMBUS_DATA" | jq -r '.data.is_optimistic // "unknown"')
-
-            # Check sync_distance first (more reliable than is_syncing flag)
-            # sync_distance=0 means head is synced, even if backfill is running
-            if [ "$SYNC_DIST" = "0" ] || [ "$SYNC_DIST" -le 2 ] 2>/dev/null; then
-                INFO+="  Status: SYNCED ✓\n"
-                INFO+="  Head Slot: $HEAD_SLOT\n"
-                if [ "$IS_SYNCING" = "true" ]; then
-                    INFO+="  Note: Backfill in progress\n"
-                fi
-            elif [ "$IS_SYNCING" = "false" ]; then
-                INFO+="  Status: SYNCED ✓\n"
-                INFO+="  Head Slot: $HEAD_SLOT\n"
             else
-                INFO+="  Status: SYNCING\n"
-                INFO+="  Head Slot: $HEAD_SLOT\n"
-                # Calculate percentage: head_slot / (head_slot + sync_distance) * 100
-                if [ "$SYNC_DIST" -gt 0 ] 2>/dev/null && [ "$HEAD_SLOT" -gt 0 ] 2>/dev/null; then
-                    TOTAL=$((HEAD_SLOT + SYNC_DIST))
-                    PCT=$(awk "BEGIN {printf \"%.2f\", ($HEAD_SLOT / $TOTAL) * 100}")
-                    INFO+="  Progress: $PCT%\n"
-                    INFO+="  Distance: $SYNC_DIST slots behind\n"
-                fi
-                if [ "$IS_OPTIMISTIC" = "true" ]; then
-                    INFO+="  Note: Waiting for EL sync\n"
-                fi
+                INFO+="  Status: API not responding\n"
             fi
         else
-            INFO+="  Status: Unable to query API\n"
+            INFO+="  Status: NOT RUNNING\n"
         fi
-    else
-        INFO+="  Status: NOT RUNNING\n"
-    fi
 
-    whiptail --title "Sync Status" --scrolltext --msgbox "$INFO" 24 $TERM_WIDTH
+        INFO+="\nNIMBUS (Consensus Layer)\n"
+        INFO+="─────────────────────────────────────────────\n"
+        if systemctl is-active --quiet nimbus-beacon-node; then
+            NIMBUS_DATA=$(curl -s http://127.0.0.1:5052/eth/v1/node/syncing 2>/dev/null)
+            if [ -n "$NIMBUS_DATA" ]; then
+                IS_SYNCING=$(echo "$NIMBUS_DATA" | jq -r '.data.is_syncing // "unknown"')
+                HEAD_SLOT=$(echo "$NIMBUS_DATA" | jq -r '.data.head_slot // "0"')
+                SYNC_DIST=$(echo "$NIMBUS_DATA" | jq -r '.data.sync_distance // "0"')
+                IS_OPTIMISTIC=$(echo "$NIMBUS_DATA" | jq -r '.data.is_optimistic // "unknown"')
+
+                if [ "$SYNC_DIST" = "0" ] || [ "$SYNC_DIST" -le 2 ] 2>/dev/null; then
+                    BACKFILL=$(get_nimbus_backfill)
+                    if [ -n "$BACKFILL" ]; then
+                        INFO+="  Status: HEAD SYNCED\n"
+                        INFO+="  Head Slot: $HEAD_SLOT\n"
+                        INFO+="  Backfill: $BACKFILL\n"
+                    else
+                        INFO+="  Status: SYNCED\n"
+                        INFO+="  Head Slot: $HEAD_SLOT\n"
+                    fi
+                elif [ "$IS_SYNCING" = "false" ]; then
+                    INFO+="  Status: SYNCED\n"
+                    INFO+="  Head Slot: $HEAD_SLOT\n"
+                else
+                    INFO+="  Status: SYNCING\n"
+                    INFO+="  Head Slot: $HEAD_SLOT\n"
+                    INFO+="  Sync Distance: $SYNC_DIST slots\n"
+                    if [ "$IS_OPTIMISTIC" = "true" ]; then
+                        INFO+="  Note: Waiting for EL sync\n"
+                    fi
+                fi
+            else
+                INFO+="  Status: API not responding\n"
+            fi
+        else
+            INFO+="  Status: NOT RUNNING\n"
+        fi
+
+        # Use dialog --msgbox with timeout for auto-refresh
+        if command -v dialog &>/dev/null; then
+            dialog --title "Sync Status (auto-refresh 5s)" \
+                   --ok-label "Back" \
+                   --timeout 5 \
+                   --msgbox "$(echo -e "$INFO")" \
+                   20 50
+            EXIT_CODE=$?
+            # Back pressed (0) = exit to menu
+            if [ $EXIT_CODE -eq 0 ]; then
+                clear
+                break
+            fi
+            # timeout or ESC (255) = continue loop (auto-refresh)
+        else
+            # Fallback to whiptail msgbox if dialog not available
+            whiptail --title "Sync Status" --msgbox "$(echo -e "$INFO")" 20 $TERM_WIDTH
+            break
+        fi
+    done
 }
 
 monitoring_peers() {
@@ -740,8 +757,8 @@ monitoring_peers() {
         PEER_RESP=$(curl -sS --max-time 3 -H "Content-Type: application/json" \
             --data '{"jsonrpc":"2.0","method":"net_peerCount","params":[],"id":1}' \
             http://127.0.0.1:8545 2>/dev/null)
-        PEER_HEX=$(echo "$PEER_RESP" | jq -r '.result // "0x0"')
-        GETH_PEERS=$(printf "%d" "$PEER_HEX" 2>/dev/null || echo "0")
+        PEER_HEX=$(echo "$PEER_RESP" | jq -r '.result // "0x0"' | sed 's/0x//')
+        GETH_PEERS=$((16#${PEER_HEX:-0}))
         INFO+="  Connected: $GETH_PEERS peers\n"
     else
         INFO+="  Geth not running\n"
@@ -914,8 +931,8 @@ monitoring_overview() {
         PEER_RESP=$(curl -sS --max-time 3 -H "Content-Type: application/json" \
             --data '{"jsonrpc":"2.0","method":"net_peerCount","params":[],"id":1}' \
             http://127.0.0.1:8545 2>/dev/null)
-        PEER_HEX=$(echo "$PEER_RESP" | jq -r '.result // "0x0"')
-        GETH_PEERS=$(printf "%d" "$PEER_HEX" 2>/dev/null || echo "0")
+        PEER_HEX=$(echo "$PEER_RESP" | jq -r '.result // "0x0"' | sed 's/0x//')
+        GETH_PEERS=$((16#${PEER_HEX:-0}))
         INFO+="  Geth Peers: $GETH_PEERS\n"
     fi
     if [ "$NIMBUS_BN_ST" = "active" ]; then
