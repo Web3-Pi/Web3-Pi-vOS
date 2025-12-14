@@ -725,18 +725,21 @@ monitoring_sync_status() {
 
         # Use dialog --msgbox with timeout for auto-refresh
         if command -v dialog &>/dev/null; then
+            START_TIME=$SECONDS
             dialog --title "Sync Status (auto-refresh 5s)" \
                    --ok-label "Back" \
                    --timeout 5 \
                    --msgbox "$(echo -e "$INFO")" \
                    20 50
             EXIT_CODE=$?
+            ELAPSED=$((SECONDS - START_TIME))
             # Back pressed (0) = exit to menu
-            if [ $EXIT_CODE -eq 0 ]; then
+            # ESC pressed (255 but quick, < 4 sec) = exit to menu
+            if [ $EXIT_CODE -eq 0 ] || ([ $EXIT_CODE -eq 255 ] && [ $ELAPSED -lt 4 ]); then
                 clear
                 break
             fi
-            # timeout or ESC (255) = continue loop (auto-refresh)
+            # timeout (255 after ~5 sec) = continue loop (auto-refresh)
         else
             # Fallback to whiptail msgbox if dialog not available
             whiptail --title "Sync Status" --msgbox "$(echo -e "$INFO")" 20 $TERM_WIDTH
