@@ -185,10 +185,10 @@ cp /tmp/overlay/start-validator.sh /opt/web3pi/start-validator.sh
 chmod +x /opt/web3pi/start-validator.sh
 #--------------------------------------------------------------------------------------------
 
-## Help script ##############################################################################
-# Help script for ethereum user (copied to /home/ethereum in rc.local)
-cp /tmp/overlay/help.sh /opt/web3pi/help.sh
-chmod +x /opt/web3pi/help.sh
+## Control Panel script #####################################################################
+# Control panel for managing Web3 Pi node (symlinked to /home/ethereum in rc.local)
+cp /tmp/overlay/control-panel.sh /opt/web3pi/control-panel.sh
+chmod +x /opt/web3pi/control-panel.sh
 #--------------------------------------------------------------------------------------------
 
 ## Trusted node sync script #################################################################

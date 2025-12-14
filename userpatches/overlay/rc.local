@@ -96,10 +96,9 @@ if [ "$(get_install_stage)" -eq 0 ]; then
     chown -R ethereum:ethereum /home/ethereum
     chmod 750 /home/ethereum
 
-    # Copy help script to ethereum home
-    cp /opt/web3pi/help.sh /home/ethereum/help.sh
-    chmod +x /home/ethereum/help.sh
-    chown ethereum:ethereum /home/ethereum/help.sh
+    # Create symlink to control-panel in ethereum home
+    ln -sf /opt/web3pi/control-panel.sh /home/ethereum/control-panel.sh
+    chown -h ethereum:ethereum /home/ethereum/control-panel.sh
 
     # NOTE: /home/signer will be created on LUKS partition during LUKS setup below
 
@@ -150,9 +149,26 @@ if [ "$(get_install_stage)" -eq 100 ]; then
   echo "[rc.local] - Installation completed"
   sleep 2
 elif [ "$(get_install_stage)" -ge 1 ]; then
-  echo "[rc.local] - Run main installation script (.install.sh)"
+#  echo "[rc.local] - Run main installation script (.install.sh)"
 #  /opt/web3pi/.install.sh
 fi
+
+# Display welcome message with connection info
+echo ""
+echo "============================================================"
+echo "  Web3 Pi Staking - System Ready"
+echo "============================================================"
+echo ""
+echo "  Hostname: $(hostname)"
+echo "  IP Address: $(hostname -I | awk '{print $1}')"
+echo ""
+echo "  To manage your node, run:"
+echo "      sudo ./control-panel.sh"
+echo "  or:"
+echo "      sudo /opt/web3pi/control-panel.sh"
+echo ""
+echo "============================================================"
+echo ""
 
 echo "[rc.local] - exit 0 at $(date '+%Y-%m-%d %H:%M:%S')"
 exit 0
