@@ -1059,25 +1059,28 @@ data_disk_usage() {
 
 system_menu() {
     while true; do
+        CURRENT_HOSTNAME=$(hostname)
         CHOICE=$(whiptail --title "System" \
-            --menu "System management options:" \
+            --menu "Hostname: $CURRENT_HOSTNAME" \
             $TERM_HEIGHT $TERM_WIDTH $LIST_HEIGHT \
-            "1" "Change ethereum Password" \
-            "2" "System Information" \
-            "3" "Reboot System" \
-            "4" "Shutdown System" \
+            "1" "Change Hostname" \
+            "2" "Change ethereum Password" \
+            "3" "System Information" \
+            "4" "Reboot System" \
+            "5" "Shutdown System" \
             "0" "Back to Main Menu" \
             3>&1 1>&2 2>&3)
 
         case $CHOICE in
-            1) system_change_password ;;
-            2) system_info ;;
-            3)
+            1) system_change_hostname ;;
+            2) system_change_password ;;
+            3) system_info ;;
+            4)
                 if yesno_box "Reboot" "Reboot the system now?"; then
                     reboot
                 fi
                 ;;
-            4)
+            5)
                 if yesno_box "Shutdown" "Shutdown the system now?"; then
                     poweroff
                 fi
@@ -1085,6 +1088,35 @@ system_menu() {
             0|"") return ;;
         esac
     done
+}
+
+system_change_hostname() {
+    CURRENT=$(hostname)
+    NEW_HOSTNAME=$(input_box "Change Hostname" "Enter new hostname (current: $CURRENT):" "$CURRENT")
+
+    if [ -z "$NEW_HOSTNAME" ]; then
+        return
+    fi
+
+    # Validate hostname (RFC 1123: alphanumeric and hyphens, max 63 chars)
+    if [[ ! "$NEW_HOSTNAME" =~ ^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?$ ]]; then
+        msg_box "Error" "Invalid hostname.\n\nHostname must:\n- Start with a letter or number\n- Contain only letters, numbers, and hyphens\n- Be max 63 characters"
+        return
+    fi
+
+    if [ "$NEW_HOSTNAME" = "$CURRENT" ]; then
+        return
+    fi
+
+    if yesno_box "Confirm" "Change hostname from '$CURRENT' to '$NEW_HOSTNAME'?"; then
+        # Update hostname
+        hostnamectl set-hostname "$NEW_HOSTNAME"
+
+        # Update /etc/hosts
+        sed -i "s/127.0.1.1.*/127.0.1.1\t$NEW_HOSTNAME/" /etc/hosts
+
+        msg_box "Success" "Hostname changed to: $NEW_HOSTNAME\n\nA reboot is recommended for all services to recognize the new hostname."
+    fi
 }
 
 system_change_password() {
