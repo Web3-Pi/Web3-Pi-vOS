@@ -3,6 +3,9 @@
 # Web3 Pi Control Panel - Validator Management Module
 #
 
+# Staging directory for validator keystore import (easy SCP access)
+VALIDATOR_KEYS_STAGING="/home/ethereum/validator_keys"
+
 validator_menu() {
     while true; do
         load_config
@@ -60,23 +63,28 @@ validator_import_keys() {
 
     CHOICE=$(whiptail --title "Import Validator Keys" \
         --menu "Select key source:" $TERM_HEIGHT $TERM_WIDTH $LIST_HEIGHT \
-        "1" "From /home/signer/keys (already copied via SSH)" \
+        "1" "From ~/validator_keys (copy keys via SSH first)" \
         "2" "From USB drive" \
         "0" "Back" \
         3>&1 1>&2 2>&3)
 
     case $CHOICE in
-        1) validator_import_from_dir ;;
+        1) validator_import_from_staging ;;
         2) validator_import_from_usb ;;
     esac
 }
 
-validator_import_from_dir() {
-    # Find keystore files
-    KEYSTORES=$(find /home/signer/keys -maxdepth 2 -name "keystore-*.json" 2>/dev/null)
+validator_import_from_staging() {
+    # Ensure staging directory exists
+    mkdir -p "$VALIDATOR_KEYS_STAGING"
+    chown ethereum:ethereum "$VALIDATOR_KEYS_STAGING"
+    chmod 700 "$VALIDATOR_KEYS_STAGING"
+
+    # Find keystore files in staging directory
+    KEYSTORES=$(find "$VALIDATOR_KEYS_STAGING" -maxdepth 1 -name "keystore-*.json" 2>/dev/null)
 
     if [ -z "$KEYSTORES" ]; then
-        msg_box "No Keys Found" "No keystore files found in /home/signer/keys/\n\nCopy your keystore-*.json files there first:\n  scp keystore-*.json ethereum@<ip>:/tmp/\n  sudo mv /tmp/keystore-*.json /home/signer/keys/\n  sudo chown signer:signer /home/signer/keys/*"
+        msg_box "No Keys Found" "No keystore files found in ~/validator_keys/\n\nCopy your keystore files first:\n  scp keystore-*.json ethereum@<ip>:~/validator_keys/"
         return
     fi
 
@@ -101,23 +109,32 @@ validator_import_from_dir() {
     echo "You will be prompted to enter the keystore password."
     echo ""
 
-    # Run nimbus import command
-    if nimbus_beacon_node deposits import --data-dir=/home/signer/keys /home/signer/keys; then
+    # Run nimbus import command (source: staging dir, destination: LUKS partition)
+    if nimbus_beacon_node deposits import --data-dir=/home/signer/keys "$VALIDATOR_KEYS_STAGING"; then
         echo ""
         echo "Setting permissions..."
         chown -R signer:signer /home/signer/keys
         chmod -R 700 /home/signer/keys
+
+        # Count imported validators
+        NEW_COUNT=$(find /home/signer/keys/validators -maxdepth 1 -type d -name "0x*" 2>/dev/null | wc -l)
+
         echo ""
         echo "============================================================"
         echo "  IMPORT COMPLETE"
         echo "============================================================"
         echo ""
-        echo "Keys imported successfully!"
+        echo "Successfully imported! Total validators: $NEW_COUNT"
         echo ""
         echo "Next steps:"
         echo "  1. Configure fee recipient (IMPORTANT!)"
         echo "  2. Start the validator"
         echo ""
+
+        read -p "Press Enter to continue..."
+
+        # Offer to clean up original keystore files
+        validator_cleanup_staging "$KEYSTORES"
     else
         echo ""
         echo "============================================================"
@@ -126,9 +143,29 @@ validator_import_from_dir() {
         echo ""
         echo "Check error messages above."
         echo ""
+        read -p "Press Enter to continue..."
     fi
+}
 
-    read -p "Press Enter to continue..."
+validator_cleanup_staging() {
+    KEYSTORES="$1"
+    COUNT=$(echo "$KEYSTORES" | wc -l)
+    LIST=$(echo "$KEYSTORES" | xargs -n1 basename)
+
+    MSG="The original keystore files are no longer needed on this device\n"
+    MSG+="after successful import.\n\n"
+    MSG+="IMPORTANT: Keep a backup copy of these files in a secure\n"
+    MSG+="location (offline computer, encrypted USB drive, etc.)\n"
+    MSG+="in case you need to restore or migrate your validator.\n\n"
+    MSG+="Delete the following $COUNT file(s) from ~/validator_keys?\n\n"
+    MSG+="$LIST"
+
+    if yesno_box "Cleanup Original Files" "$MSG"; then
+        rm -f $KEYSTORES
+        msg_box "Cleanup Complete" "Original keystore files deleted.\n\nYour validator keys are safely stored\nin the encrypted LUKS partition."
+    else
+        msg_box "Files Kept" "Original files kept in ~/validator_keys/\n\nYou can delete them manually later:\n  rm ~/validator_keys/keystore-*.json"
+    fi
 }
 
 validator_import_from_usb() {
@@ -185,25 +222,28 @@ validator_import_from_usb() {
 
     COUNT=$(echo "$KEYSTORES" | wc -l)
 
-    if ! yesno_box "Copy Keys" "Found $COUNT keystore file(s) on USB.\n\nCopy to /home/signer/keys/?"; then
+    if ! yesno_box "Copy Keys" "Found $COUNT keystore file(s) on USB.\n\nCopy to staging directory?"; then
         umount /mnt/usb 2>/dev/null
         return
     fi
 
-    # Copy keystores
-    cp $KEYSTORES /home/signer/keys/
-    chown signer:signer /home/signer/keys/keystore-*.json
-    chmod 600 /home/signer/keys/keystore-*.json
+    # Ensure staging directory exists
+    mkdir -p "$VALIDATOR_KEYS_STAGING"
+    chown ethereum:ethereum "$VALIDATOR_KEYS_STAGING"
+    chmod 700 "$VALIDATOR_KEYS_STAGING"
+
+    # Copy keystores to staging directory
+    cp $KEYSTORES "$VALIDATOR_KEYS_STAGING/"
+    chown ethereum:ethereum "$VALIDATOR_KEYS_STAGING"/keystore-*.json
+    chmod 600 "$VALIDATOR_KEYS_STAGING"/keystore-*.json
 
     # Unmount USB
     umount /mnt/usb 2>/dev/null
 
-    msg_box "Keys Copied" "$COUNT keystore file(s) copied to /home/signer/keys/\n\nNow run Import again to import them to Nimbus."
+    msg_box "Keys Copied" "$COUNT keystore file(s) copied to ~/validator_keys/\n\nProceeding to import..."
 
-    # Offer to import now
-    if yesno_box "Import Now" "Import the copied keys now?"; then
-        validator_import_from_dir
-    fi
+    # Automatically proceed to import
+    validator_import_from_staging
 }
 
 validator_list() {

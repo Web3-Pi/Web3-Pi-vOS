@@ -64,6 +64,11 @@ chmod +x /etc/update-motd.d/*   # Enable motd
 mkdir -p /opt/web3pi                                    # Create a directory for Web3 Pi
 mkdir -p /opt/web3pi/logs                               # Create a directory for Web3 Pi logs
 chown -R ethereum:ethereum /opt/web3pi 					# Set ownership to 'ethereum' user
+
+# Staging directory for validator keystore import (easy SCP access)
+mkdir -p /home/ethereum/validator_keys
+chown ethereum:ethereum /home/ethereum/validator_keys
+chmod 700 /home/ethereum/validator_keys
 #--------------------------------------------------------------------------------------------
 
 ## Configuration file #######################################################################
