@@ -33,6 +33,7 @@ validator_menu() {
             "5" "Start Validator" \
             "6" "Stop Validator" \
             "7" "View Validator Status" \
+            "8" "Voluntary Exit (EXIT STAKING)" \
             "0" "Back to Main Menu" \
             3>&1 1>&2 2>&3)
 
@@ -44,6 +45,7 @@ validator_menu() {
             5) validator_start ;;
             6) validator_stop ;;
             7) validator_status ;;
+            8) validator_voluntary_exit ;;
             0|"") return ;;
         esac
     done
@@ -462,4 +464,120 @@ validator_status() {
     fi
 
     whiptail --title "Validator Status" --scrolltext --msgbox "$INFO" 24 $TERM_WIDTH
+}
+
+validator_voluntary_exit() {
+    load_config
+
+    # Check LUKS
+    if ! mountpoint -q /home/signer 2>/dev/null; then
+        msg_box "Error" "LUKS partition not mounted!\n\nFirst unlock the encrypted storage."
+        return
+    fi
+
+    # Check beacon node is running
+    if ! systemctl is-active --quiet nimbus-beacon-node; then
+        msg_box "Error" "Beacon node is not running!\n\nStart beacon node first."
+        return
+    fi
+
+    # Check sync status (use sync_distance, not is_syncing - backfill may have is_syncing=true)
+    SYNC_DATA=$(curl -s http://127.0.0.1:5052/eth/v1/node/syncing 2>/dev/null)
+    if [ -z "$SYNC_DATA" ]; then
+        msg_box "Error" "Cannot connect to beacon node REST API.\n\nMake sure beacon node is running."
+        return
+    fi
+    SYNC_DIST=$(echo "$SYNC_DATA" | jq -r '.data.sync_distance // "999999"')
+    if [ "$SYNC_DIST" -gt 10 ] 2>/dev/null; then
+        msg_box "Error" "Beacon node is still syncing!\n\nSync distance: $SYNC_DIST slots\n\nWait for sync to complete before exit."
+        return
+    fi
+
+    # Find keystore files
+    KEYSTORES=$(find /home/signer/keys -maxdepth 1 -name "keystore-*.json" 2>/dev/null)
+    if [ -z "$KEYSTORES" ]; then
+        msg_box "No Keystores" "No keystore files found in /home/signer/keys/\n\nKeystore files are required for voluntary exit.\n\nIf you imported keys, make sure the original\nkeystore-*.json files were moved to LUKS."
+        return
+    fi
+
+    # Build selection menu
+    MENU_ITEMS=()
+    IDX=1
+    while IFS= read -r KS; do
+        BASENAME=$(basename "$KS")
+        MENU_ITEMS+=("$IDX" "$BASENAME")
+        ((IDX++))
+    done <<< "$KEYSTORES"
+
+    CHOICE=$(whiptail --title "Select Validator to Exit" \
+        --menu "Choose keystore file to exit:" $TERM_HEIGHT $TERM_WIDTH $LIST_HEIGHT \
+        "${MENU_ITEMS[@]}" \
+        3>&1 1>&2 2>&3)
+
+    [ -z "$CHOICE" ] && return
+
+    # Get selected keystore
+    SELECTED_KS=$(echo "$KEYSTORES" | sed -n "${CHOICE}p")
+    SELECTED_NAME=$(basename "$SELECTED_KS")
+
+    # First warning
+    MSG="WARNING: VOLUNTARY EXIT\n"
+    MSG+="═══════════════════════════════════════════════\n\n"
+    MSG+="You are about to EXIT this validator:\n\n"
+    MSG+="  $SELECTED_NAME\n\n"
+    MSG+="THIS ACTION IS IRREVERSIBLE!\n\n"
+    MSG+="• You will STOP earning staking rewards\n"
+    MSG+="• You CANNOT re-activate this validator key\n"
+    MSG+="• Funds withdrawable after ~27 hours\n"
+    MSG+="• Keep node online until exit is finalized\n\n"
+    MSG+="Are you ABSOLUTELY SURE you want to exit?"
+
+    if ! yesno_box "CONFIRM VOLUNTARY EXIT" "$MSG"; then
+        return
+    fi
+
+    # Second confirmation
+    if ! yesno_box "FINAL CONFIRMATION" "This is your LAST CHANCE to cancel.\n\nProceed with voluntary exit?"; then
+        return
+    fi
+
+    # Execute exit
+    clear
+    echo ""
+    echo "============================================================"
+    echo "  VOLUNTARY EXIT"
+    echo "============================================================"
+    echo ""
+    echo "Validator: $SELECTED_NAME"
+    echo ""
+    echo "You will be prompted for your keystore password."
+    echo ""
+
+    if nimbus_beacon_node deposits exit \
+        --network="$NETWORK" \
+        --validator="$SELECTED_KS" \
+        --rest-url=http://127.0.0.1:5052; then
+        echo ""
+        echo "============================================================"
+        echo "  EXIT SUBMITTED SUCCESSFULLY"
+        echo "============================================================"
+        echo ""
+        echo "Your voluntary exit has been broadcast to the network."
+        echo ""
+        echo "Timeline:"
+        echo "  • Exit will be processed within a few epochs"
+        echo "  • Funds withdrawable ~27 hours after exit epoch"
+        echo "  • Keep your node online until exit is finalized"
+        echo ""
+    else
+        echo ""
+        echo "============================================================"
+        echo "  EXIT FAILED"
+        echo "============================================================"
+        echo ""
+        echo "Check error messages above."
+        echo ""
+    fi
+
+    read -p "Press Enter to continue..."
 }
