@@ -33,7 +33,7 @@ With security features:
 
 ### 1. Flash the Image
 
-Download the latest image and flash it to your NVMe drive using Balena Etcher:
+Download the latest image and flash it to your NVMe drive using Balena Etcher.
 
 Insert NVMe SSD into your Raspberry Pi 5 and power on.
 
@@ -57,175 +57,73 @@ ssh ethereum@<IP_ADDRESS>
 
 ---
 
-### 3. SSH Security Hardening
+### 3. Launch Control Panel
 
-#### 3.1 Add Your SSH Public Key
-
-On the RPi, run:
+All configuration is done through the Control Panel TUI:
 
 ```bash
-sudo /opt/web3pi/ssh-add-key.sh
+sudo control-panel
 ```
 
-Paste your public key when prompted.
+The Control Panel provides:
 
-#### 3.2 Test Key-Based Login
-
-Open a **new terminal** and test SSH login with key.
-
-If successful (no password prompt), proceed to disable password authentication.
-
-#### 3.3 Disable Password Authentication
-
-```bash
-sudo /opt/web3pi/ssh-disable-password.sh
-```
-
-> **Important:** Keep your current SSH session open until you verify key-based login works!
+| Option | Description |
+|--------|-------------|
+| **Eth Network Configuration** | Set network (hoodi/mainnet), ports, fee recipient |
+| **SSH Security** | Add SSH keys, disable password auth |
+| **LUKS Encrypted Storage** | Setup and unlock encrypted validator key storage |
+| **Initial Sync** | Trusted node sync (checkpoint sync) |
+| **Service Management** | Start/stop/enable Geth, Nimbus services |
+| **Monitoring** | View logs, sync status, system resources |
+| **Data Management** | Manage blockchain data |
+| **System** | Hostname, timezone, reboot, shutdown |
+| **Validator Management** | Import keys, configure validator |
 
 ---
 
-### 4. Configure Network
+### 4. Recommended Setup Order
 
-Edit the configuration file:
-
-```bash
-sudo nano /opt/web3pi/config
-```
-
-Set your network (`hoodi` for testnet, `mainnet` for production):
-
-```bash
-# Network: hoodi or mainnet
-NETWORK=hoodi
-
-# Geth P2P port (TCP/UDP)
-GETH_PORT=30303
-
-# Nimbus P2P port (TCP/UDP)
-NIMBUS_PORT=9000
-```
-
-> **Note:** If you change ports, you must also update UFW firewall rules. See comments in the config file.
+1. **SSH Security** → Add your SSH public key, then disable password authentication
+2. **Eth Network Configuration** → Select network (hoodi for testnet, mainnet for production)
+3. **LUKS Encrypted Storage** → Setup encrypted partition for validator keys
+4. **Initial Sync** → Perform trusted node sync (checkpoint sync)
+5. **Service Management** → Enable and start Geth and Nimbus services
+6. **Monitoring** → Monitor sync progress until fully synced
+7. **Validator Management** → Import validator keys and start validating
 
 ---
 
-### 5. LUKS Encrypted Storage Setup
+### 5. Monitor Synchronization
 
-Create encrypted partition for validator keys (one-time setup):
+Use **Monitoring** in Control Panel to view:
+- Service status
+- Sync progress
+- Live logs
 
-```bash
-sudo /opt/web3pi/setup-luks.sh
-```
-
-You will be prompted to:
-1. Select a disk for the encrypted partition
-2. Create a strong passphrase
-
-> **Important:** Remember your passphrase! It cannot be recovered.
-
-After setup, unlock the encrypted storage:
+Or manually check:
 
 ```bash
-sudo /opt/web3pi/unlock-luks.sh
-```
-
----
-
-### 6. Trusted Node Sync (Checkpoint Sync)
-
-Perform fast initial sync using checkpoint sync servers:
-
-```bash
-sudo /opt/web3pi/trusted-node-sync.sh
-```
-
-This downloads a recent checkpoint state instead of syncing from genesis, reducing sync time from days to minutes.
-
-> The script uses the `NETWORK` value from `/opt/web3pi/config`.
-
----
-
-### 7. Start Ethereum Clients
-
-Enable and start the services:
-
-```bash
-# Enable services to start on boot
-sudo systemctl enable geth
-sudo systemctl enable nimbus-beacon-node
-
-# Start services
-sudo systemctl start geth
-sudo systemctl start nimbus-beacon-node
-```
-
----
-
-### 8. Monitor Synchronization
-
-#### Check Service Status
-
-```bash
+# Service status
 sudo systemctl status geth
 sudo systemctl status nimbus-beacon-node
-```
 
-#### View Logs
-
-```bash
-# Geth (Execution Layer)
-sudo journalctl -u geth -f
-
-# Nimbus (Consensus Layer)
-sudo journalctl -u nimbus-beacon-node -f
-```
-
-#### Sync Progress
-
-**Geth sync status:**
-```bash
+# Geth sync (returns false when synced)
 geth attach --datadir /var/lib/el --exec "eth.syncing"
-```
 
-Returns `false` when fully synced.
-
-**Nimbus sync status:**
-```bash
+# Nimbus sync
 curl -s http://127.0.0.1:5052/eth/v1/node/syncing | jq
 ```
 
-Wait for both EL and CL to fully synchronize before proceeding.
-
----
-
-### 9. Validator Setup
-
-> **UNDER CONSTRUCTION**
->
-> This section is currently being developed.
->
-> Future steps will include:
-> - Importing validator keys to `/home/signer/keys`
-> - Configuring fee recipient address
-> - Starting the validator client
-> - Monitoring validator performance
+Wait for both EL and CL to fully synchronize before setting up validator.
 
 ---
 
 ## After Reboot
 
-After each system reboot:
+After each system reboot, use Control Panel to:
 
-1. Unlock encrypted storage:
-   ```bash
-   sudo /opt/web3pi/unlock-luks.sh
-   ```
-
-2. Start validator (when configured):
-   ```bash
-   sudo /opt/web3pi/start-validator.sh
-   ```
+1. **LUKS Encrypted Storage** → Unlock encrypted storage
+2. **Service Management** → Verify services are running
 
 > Geth and Nimbus beacon node start automatically if enabled.
 
@@ -247,8 +145,8 @@ After each system reboot:
 ## Useful Commands
 
 ```bash
-# Show help
-/home/ethereum/help.sh
+# Launch Control Panel (main configuration tool)
+sudo control-panel
 
 # Service control
 sudo systemctl start|stop|restart|status geth
@@ -282,17 +180,19 @@ Internal only (localhost):
 ## Troubleshooting
 
 ### Services won't start
+Use Control Panel → **Monitoring** to view logs, or manually:
 ```bash
 sudo journalctl -u geth -n 50
 sudo journalctl -u nimbus-beacon-node -n 50
 ```
 
 ### Sync issues
-- Ensure correct network is set in `/opt/web3pi/config`
+- Use Control Panel → **Eth Network Configuration** to verify correct network
 - Check internet connectivity
-- Verify firewall allows P2P ports
+- Verify firewall allows P2P ports: `sudo ufw status`
 
 ### LUKS issues
+- Use Control Panel → **LUKS Encrypted Storage** to manage encryption
 - Ensure you're using the correct passphrase
 - Check if partition exists: `lsblk`
 
