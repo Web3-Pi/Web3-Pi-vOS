@@ -63,6 +63,13 @@ NIMBUS_PORT=${NIMBUS_PORT:-9000}
 #   sudo ufw allow <new_port>/udp
 #   sudo systemctl daemon-reload
 #   sudo systemctl restart geth nimbus-beacon-node
+
+# Validator Configuration
+# Fee recipient address for block rewards (REQUIRED for validator)
+FEE_RECIPIENT=${FEE_RECIPIENT:-0x0000000000000000000000000000000000000000}
+
+# Graffiti message (max 32 characters, visible in proposed blocks)
+GRAFFITI=${GRAFFITI:-Web3Pi}
 EOF
 }
 
@@ -98,7 +105,7 @@ main_menu() {
             "6" "Monitoring" \
             "7" "Data Management" \
             "8" "System" \
-            "9" "Validator Keys [coming soon]" \
+            "9" "Validator Management" \
             "A" "Arkiv [coming soon]" \
             "0" "Exit" \
             3>&1 1>&2 2>&3)
@@ -112,7 +119,7 @@ main_menu() {
             6) monitoring_menu ;;
             7) data_menu ;;
             8) system_menu ;;
-            9) msg_box "Validator Keys" "This feature is coming soon.\n\nValidator key management will allow you to:\n- Import validator keys\n- View validator status\n- Manage fee recipient" ;;
+            9) validator_menu ;;
             A) msg_box "Arkiv" "This feature is coming soon." ;;
             0|"") exit 0 ;;
         esac
@@ -372,7 +379,7 @@ luks_menu() {
     while true; do
         # Check LUKS status
         LUKS_STATUS="Not configured"
-        if [ -b /dev/mapper/signer_crypt ]; then
+        if [ -b /dev/mapper/signer_home ]; then
             LUKS_STATUS="Unlocked and mounted"
         elif lsblk -o NAME,TYPE | grep -q "crypt"; then
             LUKS_STATUS="Configured but locked"
@@ -411,10 +418,10 @@ luks_menu() {
 luks_status() {
     STATUS="LUKS Status:\n\n"
 
-    if [ -b /dev/mapper/signer_crypt ]; then
+    if [ -b /dev/mapper/signer_home ]; then
         STATUS+="Encrypted volume: UNLOCKED\n"
-        STATUS+="Mount point: $(findmnt -n -o TARGET /dev/mapper/signer_crypt 2>/dev/null || echo 'Not mounted')\n"
-        STATUS+="\nVolume info:\n$(cryptsetup status signer_crypt 2>/dev/null || echo 'N/A')"
+        STATUS+="Mount point: $(findmnt -n -o TARGET /dev/mapper/signer_home 2>/dev/null || echo 'Not mounted')\n"
+        STATUS+="\nVolume info:\n$(cryptsetup status signer_home 2>/dev/null || echo 'N/A')"
     else
         STATUS+="Encrypted volume: LOCKED or not configured\n"
         STATUS+="\nTo unlock: sudo /opt/web3pi/unlock-luks.sh"
@@ -1248,6 +1255,432 @@ system_info() {
     fi
 
     whiptail --title "System Information" --scrolltext --msgbox "$INFO" 30 $TERM_WIDTH
+}
+
+#------------------------------------------------------------------------------
+# 9. Validator Management
+#------------------------------------------------------------------------------
+
+validator_menu() {
+    while true; do
+        load_config
+        # Get validator status
+        VC_STATUS=$(systemctl is-active nimbus-validator 2>/dev/null || echo "inactive")
+        LUKS_MOUNTED="No"
+        mountpoint -q /home/signer 2>/dev/null && LUKS_MOUNTED="Yes"
+
+        # Count imported validators
+        VALIDATOR_COUNT=0
+        if [ -d /home/signer/keys/validators ]; then
+            VALIDATOR_COUNT=$(find /home/signer/keys/validators -maxdepth 1 -type d -name "0x*" 2>/dev/null | wc -l)
+        fi
+
+        # Shorten fee recipient for display
+        FEE_SHORT="${FEE_RECIPIENT:0:10}...${FEE_RECIPIENT: -4}"
+
+        CHOICE=$(whiptail --title "Validator Management" \
+            --menu "Status: $VC_STATUS | LUKS: $LUKS_MOUNTED | Validators: $VALIDATOR_COUNT" \
+            $TERM_HEIGHT $TERM_WIDTH $LIST_HEIGHT \
+            "1" "Import Validator Keys" \
+            "2" "List Validators" \
+            "3" "Configure Fee Recipient [$FEE_SHORT]" \
+            "4" "Configure Graffiti [$GRAFFITI]" \
+            "5" "Start Validator" \
+            "6" "Stop Validator" \
+            "7" "View Validator Status" \
+            "0" "Back to Main Menu" \
+            3>&1 1>&2 2>&3)
+
+        case $CHOICE in
+            1) validator_import_keys ;;
+            2) validator_list ;;
+            3) validator_fee_recipient ;;
+            4) validator_graffiti ;;
+            5) validator_start ;;
+            6) validator_stop ;;
+            7) validator_status ;;
+            0|"") return ;;
+        esac
+    done
+}
+
+validator_import_keys() {
+    # Check if LUKS is mounted
+    if ! mountpoint -q /home/signer 2>/dev/null; then
+        msg_box "Error" "LUKS partition not mounted!\n\nFirst unlock the encrypted storage:\n  Menu -> LUKS Encrypted Storage -> Unlock LUKS"
+        return
+    fi
+
+    # Create keys directory if it doesn't exist
+    mkdir -p /home/signer/keys
+    chown signer:signer /home/signer/keys
+    chmod 700 /home/signer/keys
+
+    CHOICE=$(whiptail --title "Import Validator Keys" \
+        --menu "Select key source:" $TERM_HEIGHT $TERM_WIDTH $LIST_HEIGHT \
+        "1" "From /home/signer/keys (already copied via SSH)" \
+        "2" "From USB drive" \
+        "0" "Back" \
+        3>&1 1>&2 2>&3)
+
+    case $CHOICE in
+        1) validator_import_from_dir ;;
+        2) validator_import_from_usb ;;
+    esac
+}
+
+validator_import_from_dir() {
+    # Find keystore files
+    KEYSTORES=$(find /home/signer/keys -maxdepth 2 -name "keystore-*.json" 2>/dev/null)
+
+    if [ -z "$KEYSTORES" ]; then
+        msg_box "No Keys Found" "No keystore files found in /home/signer/keys/\n\nCopy your keystore-*.json files there first:\n  scp keystore-*.json ethereum@<ip>:/tmp/\n  sudo mv /tmp/keystore-*.json /home/signer/keys/\n  sudo chown signer:signer /home/signer/keys/*"
+        return
+    fi
+
+    # Count and list keystores
+    COUNT=$(echo "$KEYSTORES" | wc -l)
+    LIST=$(echo "$KEYSTORES" | xargs -n1 basename | head -10)
+    if [ "$COUNT" -gt 10 ]; then
+        LIST="$LIST\n... and $((COUNT-10)) more"
+    fi
+
+    if ! yesno_box "Import Keys" "Found $COUNT keystore file(s):\n\n$LIST\n\nImport these keys?"; then
+        return
+    fi
+
+    # Run import
+    clear
+    echo ""
+    echo "============================================================"
+    echo "  IMPORTING VALIDATOR KEYS"
+    echo "============================================================"
+    echo ""
+    echo "You will be prompted to enter the keystore password."
+    echo ""
+
+    # Run nimbus import command
+    if nimbus_beacon_node deposits import --data-dir=/home/signer/keys /home/signer/keys; then
+        echo ""
+        echo "Setting permissions..."
+        chown -R signer:signer /home/signer/keys
+        chmod -R 700 /home/signer/keys
+        echo ""
+        echo "============================================================"
+        echo "  IMPORT COMPLETE"
+        echo "============================================================"
+        echo ""
+        echo "Keys imported successfully!"
+        echo ""
+        echo "Next steps:"
+        echo "  1. Configure fee recipient (IMPORTANT!)"
+        echo "  2. Start the validator"
+        echo ""
+    else
+        echo ""
+        echo "============================================================"
+        echo "  IMPORT FAILED"
+        echo "============================================================"
+        echo ""
+        echo "Check error messages above."
+        echo ""
+    fi
+
+    read -p "Press Enter to continue..."
+}
+
+validator_import_from_usb() {
+    # Detect USB devices
+    USB_DEVICES=$(lsblk -o NAME,SIZE,TYPE,TRAN -d -n 2>/dev/null | grep -E "usb" | awk '{print $1}')
+
+    if [ -z "$USB_DEVICES" ]; then
+        msg_box "No USB Found" "No USB drives detected.\n\nPlug in your USB drive and try again."
+        return
+    fi
+
+    # Build menu from USB devices
+    MENU_ITEMS=()
+    for DEV in $USB_DEVICES; do
+        SIZE=$(lsblk -o SIZE -d -n /dev/$DEV 2>/dev/null)
+        MENU_ITEMS+=("$DEV" "$SIZE")
+    done
+
+    DEV_CHOICE=$(whiptail --title "Select USB Drive" \
+        --menu "Choose USB drive:" $TERM_HEIGHT $TERM_WIDTH $LIST_HEIGHT \
+        "${MENU_ITEMS[@]}" \
+        3>&1 1>&2 2>&3)
+
+    if [ -z "$DEV_CHOICE" ]; then
+        return
+    fi
+
+    # Find partitions on the device
+    PARTITIONS=$(lsblk -o NAME -n /dev/$DEV_CHOICE 2>/dev/null | tail -n +2)
+    if [ -z "$PARTITIONS" ]; then
+        # No partitions, use the device itself
+        USB_PART="/dev/$DEV_CHOICE"
+    else
+        # Use first partition
+        USB_PART="/dev/$(echo "$PARTITIONS" | head -1 | tr -d ' ')"
+    fi
+
+    # Mount USB
+    mkdir -p /mnt/usb
+
+    if ! mount "$USB_PART" /mnt/usb 2>/dev/null; then
+        msg_box "Mount Error" "Failed to mount $USB_PART\n\nTry a different filesystem format (FAT32, exFAT, ext4)."
+        return
+    fi
+
+    # Find keystore files on USB
+    KEYSTORES=$(find /mnt/usb -name "keystore-*.json" 2>/dev/null)
+
+    if [ -z "$KEYSTORES" ]; then
+        umount /mnt/usb 2>/dev/null
+        msg_box "No Keys Found" "No keystore-*.json files found on USB drive."
+        return
+    fi
+
+    COUNT=$(echo "$KEYSTORES" | wc -l)
+
+    if ! yesno_box "Copy Keys" "Found $COUNT keystore file(s) on USB.\n\nCopy to /home/signer/keys/?"; then
+        umount /mnt/usb 2>/dev/null
+        return
+    fi
+
+    # Copy keystores
+    cp $KEYSTORES /home/signer/keys/
+    chown signer:signer /home/signer/keys/keystore-*.json
+    chmod 600 /home/signer/keys/keystore-*.json
+
+    # Unmount USB
+    umount /mnt/usb 2>/dev/null
+
+    msg_box "Keys Copied" "$COUNT keystore file(s) copied to /home/signer/keys/\n\nNow run Import again to import them to Nimbus."
+
+    # Offer to import now
+    if yesno_box "Import Now" "Import the copied keys now?"; then
+        validator_import_from_dir
+    fi
+}
+
+validator_list() {
+    if ! mountpoint -q /home/signer 2>/dev/null; then
+        msg_box "Error" "LUKS partition not mounted!"
+        return
+    fi
+
+    if [ ! -d /home/signer/keys/validators ]; then
+        msg_box "No Validators" "No validators imported yet.\n\nUse 'Import Validator Keys' first."
+        return
+    fi
+
+    INFO="Imported Validators:\n"
+    INFO+="─────────────────────────────────────────────────────────\n\n"
+
+    COUNT=0
+    for DIR in /home/signer/keys/validators/0x*/; do
+        if [ -d "$DIR" ]; then
+            PUBKEY=$(basename "$DIR")
+            # Shorten pubkey for display
+            SHORT="${PUBKEY:0:18}...${PUBKEY: -6}"
+            INFO+="  $SHORT\n"
+            ((COUNT++))
+        fi
+    done
+
+    if [ "$COUNT" -eq 0 ]; then
+        INFO+="  No validators found.\n"
+    else
+        INFO+="\n─────────────────────────────────────────────────────────\n"
+        INFO+="Total: $COUNT validator(s)\n"
+    fi
+
+    whiptail --title "Validator List" --scrolltext --msgbox "$INFO" $TERM_HEIGHT $TERM_WIDTH
+}
+
+validator_fee_recipient() {
+    load_config
+
+    CURRENT="${FEE_RECIPIENT:-0x0000000000000000000000000000000000000000}"
+
+    NEW_ADDR=$(whiptail --title "Configure Fee Recipient" \
+        --inputbox "Enter Ethereum address for block rewards:\n\nCurrent: $CURRENT\n\nThis address will receive transaction fees from blocks your validator proposes." \
+        $TERM_HEIGHT $TERM_WIDTH "$CURRENT" 3>&1 1>&2 2>&3)
+
+    if [ -z "$NEW_ADDR" ]; then
+        return
+    fi
+
+    # Validate Ethereum address format
+    if [[ ! "$NEW_ADDR" =~ ^0x[a-fA-F0-9]{40}$ ]]; then
+        msg_box "Invalid Address" "Invalid Ethereum address format.\n\nMust be 0x followed by 40 hex characters."
+        return
+    fi
+
+    if [ "$NEW_ADDR" = "$CURRENT" ]; then
+        return
+    fi
+
+    FEE_RECIPIENT="$NEW_ADDR"
+    save_config
+
+    msg_box "Fee Recipient Set" "Fee recipient updated to:\n$NEW_ADDR\n\nRestart the validator for changes to take effect."
+}
+
+validator_graffiti() {
+    load_config
+
+    CURRENT="${GRAFFITI:-Web3Pi}"
+
+    NEW_GRAFFITI=$(whiptail --title "Configure Graffiti" \
+        --inputbox "Enter graffiti message (max 32 characters):\n\nThis text appears in blocks your validator proposes.\n\nCurrent: $CURRENT" \
+        $TERM_HEIGHT $TERM_WIDTH "$CURRENT" 3>&1 1>&2 2>&3)
+
+    if [ -z "$NEW_GRAFFITI" ]; then
+        return
+    fi
+
+    # Check length (max 32 bytes)
+    if [ ${#NEW_GRAFFITI} -gt 32 ]; then
+        msg_box "Too Long" "Graffiti must be 32 characters or less.\n\nYour input: ${#NEW_GRAFFITI} characters"
+        return
+    fi
+
+    if [ "$NEW_GRAFFITI" = "$CURRENT" ]; then
+        return
+    fi
+
+    GRAFFITI="$NEW_GRAFFITI"
+    save_config
+
+    msg_box "Graffiti Set" "Graffiti updated to:\n$NEW_GRAFFITI\n\nRestart the validator for changes to take effect."
+}
+
+validator_start() {
+    load_config
+
+    # Check LUKS
+    if ! mountpoint -q /home/signer 2>/dev/null; then
+        msg_box "Error" "LUKS partition not mounted!\n\nFirst unlock the encrypted storage."
+        return
+    fi
+
+    # Check for imported validators
+    VALIDATOR_COUNT=0
+    if [ -d /home/signer/keys/validators ]; then
+        VALIDATOR_COUNT=$(find /home/signer/keys/validators -maxdepth 1 -type d -name "0x*" 2>/dev/null | wc -l)
+    fi
+
+    if [ "$VALIDATOR_COUNT" -eq 0 ]; then
+        msg_box "No Validators" "No validators imported!\n\nImport validator keys first."
+        return
+    fi
+
+    # Warn about zero fee recipient
+    if [ "$FEE_RECIPIENT" = "0x0000000000000000000000000000000000000000" ]; then
+        if ! yesno_box "Warning: Zero Fee Recipient" "Fee recipient is set to zero address!\n\nTransaction fees will be LOST.\n\nConfigure fee recipient first?\n\n(No = start anyway)"; then
+            # User chose No, proceed anyway
+            :
+        else
+            # User chose Yes, go to fee recipient config
+            validator_fee_recipient
+            return
+        fi
+    fi
+
+    # Check if already running
+    if systemctl is-active --quiet nimbus-validator; then
+        msg_box "Already Running" "Nimbus validator is already running."
+        return
+    fi
+
+    # Start validator
+    systemctl start nimbus-validator
+
+    sleep 2
+
+    if systemctl is-active --quiet nimbus-validator; then
+        msg_box "Validator Started" "Nimbus validator started successfully!\n\nValidators: $VALIDATOR_COUNT\nFee Recipient: $FEE_RECIPIENT\nGraffiti: $GRAFFITI\n\nView logs: journalctl -u nimbus-validator -f"
+    else
+        msg_box "Start Failed" "Failed to start validator.\n\nCheck logs: journalctl -u nimbus-validator -n 50"
+    fi
+}
+
+validator_stop() {
+    if ! systemctl is-active --quiet nimbus-validator; then
+        msg_box "Not Running" "Nimbus validator is not running."
+        return
+    fi
+
+    if yesno_box "Stop Validator" "Stop the Nimbus validator?\n\nYour validator will stop performing duties until restarted."; then
+        systemctl stop nimbus-validator
+        msg_box "Validator Stopped" "Nimbus validator stopped."
+    fi
+}
+
+validator_status() {
+    load_config
+
+    INFO="═══════════════════════════════════════════════════════════\n"
+    INFO+="                    VALIDATOR STATUS\n"
+    INFO+="═══════════════════════════════════════════════════════════\n\n"
+
+    # Service status
+    VC_STATUS=$(systemctl is-active nimbus-validator 2>/dev/null || echo "inactive")
+    VC_ENABLED=$(systemctl is-enabled nimbus-validator 2>/dev/null || echo "disabled")
+
+    INFO+="▶ SERVICE\n"
+    INFO+="─────────────────────────────────────────────────────────\n"
+    INFO+="  Status: $VC_STATUS\n"
+    INFO+="  Boot: $VC_ENABLED\n"
+
+    # LUKS status
+    INFO+="\n▶ ENCRYPTED STORAGE\n"
+    INFO+="─────────────────────────────────────────────────────────\n"
+    if mountpoint -q /home/signer 2>/dev/null; then
+        INFO+="  LUKS: Unlocked and mounted\n"
+    else
+        INFO+="  LUKS: LOCKED (validator cannot run)\n"
+    fi
+
+    # Validator count
+    INFO+="\n▶ VALIDATORS\n"
+    INFO+="─────────────────────────────────────────────────────────\n"
+    VALIDATOR_COUNT=0
+    if [ -d /home/signer/keys/validators ]; then
+        VALIDATOR_COUNT=$(find /home/signer/keys/validators -maxdepth 1 -type d -name "0x*" 2>/dev/null | wc -l)
+    fi
+    INFO+="  Imported: $VALIDATOR_COUNT\n"
+
+    # Configuration
+    INFO+="\n▶ CONFIGURATION\n"
+    INFO+="─────────────────────────────────────────────────────────\n"
+    INFO+="  Fee Recipient: ${FEE_RECIPIENT:-not set}\n"
+    INFO+="  Graffiti: ${GRAFFITI:-Web3Pi}\n"
+    INFO+="  Beacon Node: http://127.0.0.1:5052\n"
+
+    # Beacon node connection check
+    INFO+="\n▶ BEACON NODE\n"
+    INFO+="─────────────────────────────────────────────────────────\n"
+    if systemctl is-active --quiet nimbus-beacon-node; then
+        INFO+="  Status: Running\n"
+        # Check sync status
+        SYNC_DATA=$(curl -s http://127.0.0.1:5052/eth/v1/node/syncing 2>/dev/null)
+        if [ -n "$SYNC_DATA" ]; then
+            IS_SYNCING=$(echo "$SYNC_DATA" | jq -r '.data.is_syncing // "unknown"')
+            if [ "$IS_SYNCING" = "false" ]; then
+                INFO+="  Sync: Completed\n"
+            else
+                SYNC_DIST=$(echo "$SYNC_DATA" | jq -r '.data.sync_distance // "?"')
+                INFO+="  Sync: In progress ($SYNC_DIST slots behind)\n"
+            fi
+        fi
+    else
+        INFO+="  Status: NOT RUNNING (validator needs beacon node!)\n"
+    fi
+
+    whiptail --title "Validator Status" --scrolltext --msgbox "$INFO" 24 $TERM_WIDTH
 }
 
 #------------------------------------------------------------------------------

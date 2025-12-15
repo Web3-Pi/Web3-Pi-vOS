@@ -16,3 +16,10 @@ NIMBUS_PORT=9000
 #   sudo ufw allow <new_port>/udp
 #   sudo systemctl daemon-reload
 #   sudo systemctl restart geth nimbus-beacon-node
+
+# Validator Configuration
+# Fee recipient address for block rewards (REQUIRED for validator)
+FEE_RECIPIENT=0x0000000000000000000000000000000000000000
+
+# Graffiti message (max 32 characters, visible in proposed blocks)
+GRAFFITI=Web3Pi
