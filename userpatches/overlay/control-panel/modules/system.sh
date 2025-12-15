@@ -9,15 +9,16 @@ system_menu() {
         CURRENT_TZ=$(timedatectl show --property=Timezone --value 2>/dev/null || echo "N/A")
         CHOICE=$(whiptail --title "System" \
             --menu "Hostname: $CURRENT_HOSTNAME | TZ: $CURRENT_TZ" \
-            $TERM_HEIGHT $TERM_WIDTH 12 \
+            $TERM_HEIGHT $TERM_WIDTH 14 \
             "1" "Change Hostname" \
             "2" "Change ethereum Password" \
             "3" "Set Timezone" \
             "4" "Set Keyboard Layout" \
             "5" "Time Sync Status (Chrony)" \
-            "6" "System Information" \
-            "7" "Reboot System" \
-            "8" "Shutdown System" \
+            "6" "Edit Boot Config (config.txt)" \
+            "7" "System Information" \
+            "8" "Reboot System" \
+            "9" "Shutdown System" \
             "0" "Back to Main Menu" \
             3>&1 1>&2 2>&3)
 
@@ -27,13 +28,14 @@ system_menu() {
             3) system_timezone ;;
             4) system_keyboard ;;
             5) system_time_sync ;;
-            6) system_info ;;
-            7)
+            6) system_edit_config ;;
+            7) system_info ;;
+            8)
                 if yesno_box "Reboot" "Reboot the system now?"; then
                     reboot
                 fi
                 ;;
-            8)
+            9)
                 if yesno_box "Shutdown" "Shutdown the system now?"; then
                     poweroff
                 fi
@@ -242,6 +244,20 @@ system_time_sync() {
     fi
 
     whiptail --title "Time Sync Status (Chrony)" --scrolltext --msgbox "$INFO" 26 $TERM_WIDTH
+}
+
+system_edit_config() {
+    CONFIG_FILE="/boot/firmware/config.txt"
+
+    if [ ! -f "$CONFIG_FILE" ]; then
+        msg_box "Error" "File not found: $CONFIG_FILE"
+        return
+    fi
+
+    if yesno_box "Edit Boot Config" "Edit $CONFIG_FILE?\n\nChanges require a reboot to take effect.\n\nEditor: nano (Ctrl+X to exit)"; then
+        clear
+        nano "$CONFIG_FILE"
+    fi
 }
 
 system_info() {
