@@ -62,7 +62,7 @@ ssh ethereum@<IP_ADDRESS>
 All configuration is done through the Control Panel TUI:
 
 ```bash
-sudo control-panel
+sudo /opt/web3pi/control-panel.sh
 ```
 
 The Control Panel provides:
@@ -129,6 +129,38 @@ After each system reboot, use Control Panel to:
 
 ---
 
+## Importing Validator Keys
+
+After your node is fully synced, import your validator keys:
+
+### Option A: Via SSH (recommended)
+
+1. Copy keystore files from your local machine:
+   ```bash
+   scp keystore-*.json ethereum@<IP_ADDRESS>:~/validator_keys/
+   ```
+
+2. On the Pi, open Control Panel:
+   ```bash
+   sudo /opt/web3pi/control-panel.sh
+   ```
+
+3. Navigate to: **Validator Management** → **Import Validator Keys** → **From ~/validator_keys**
+
+4. Enter your keystore password when prompted
+
+5. After successful import, you'll be asked to delete the original files (recommended - they're no longer needed on this device)
+
+### Option B: Via USB Drive
+
+1. Copy keystore files to a USB drive
+2. Insert USB into Raspberry Pi
+3. Use Control Panel: **Validator Management** → **Import Validator Keys** → **From USB drive**
+
+> **Note:** Always keep a backup of your keystore files in a secure offline location.
+
+---
+
 ## File Locations
 
 | Component | Directory |
@@ -136,7 +168,8 @@ After each system reboot, use Control Panel to:
 | Configuration | `/opt/web3pi/config` |
 | Geth data | `/var/lib/el` |
 | Nimbus beacon data | `/var/lib/cl` |
-| Validator keys | `/home/signer/keys` (encrypted) |
+| Validator keys | `/home/signer/keys` (encrypted LUKS) |
+| Key import staging | `~/validator_keys` |
 | Scripts | `/opt/web3pi/` |
 | Logs | `/opt/web3pi/logs/` |
 
@@ -146,7 +179,7 @@ After each system reboot, use Control Panel to:
 
 ```bash
 # Launch Control Panel (main configuration tool)
-sudo control-panel
+sudo /opt/web3pi/control-panel.sh
 
 # Service control
 sudo systemctl start|stop|restart|status geth
