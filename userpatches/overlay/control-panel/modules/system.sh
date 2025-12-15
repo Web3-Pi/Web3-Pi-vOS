@@ -6,27 +6,34 @@
 system_menu() {
     while true; do
         CURRENT_HOSTNAME=$(hostname)
+        CURRENT_TZ=$(timedatectl show --property=Timezone --value 2>/dev/null || echo "N/A")
         CHOICE=$(whiptail --title "System" \
-            --menu "Hostname: $CURRENT_HOSTNAME" \
-            $TERM_HEIGHT $TERM_WIDTH $LIST_HEIGHT \
+            --menu "Hostname: $CURRENT_HOSTNAME | TZ: $CURRENT_TZ" \
+            $TERM_HEIGHT $TERM_WIDTH 12 \
             "1" "Change Hostname" \
             "2" "Change ethereum Password" \
-            "3" "System Information" \
-            "4" "Reboot System" \
-            "5" "Shutdown System" \
+            "3" "Set Timezone" \
+            "4" "Set Keyboard Layout" \
+            "5" "Time Sync Status (Chrony)" \
+            "6" "System Information" \
+            "7" "Reboot System" \
+            "8" "Shutdown System" \
             "0" "Back to Main Menu" \
             3>&1 1>&2 2>&3)
 
         case $CHOICE in
             1) system_change_hostname ;;
             2) system_change_password ;;
-            3) system_info ;;
-            4)
+            3) system_timezone ;;
+            4) system_keyboard ;;
+            5) system_time_sync ;;
+            6) system_info ;;
+            7)
                 if yesno_box "Reboot" "Reboot the system now?"; then
                     reboot
                 fi
                 ;;
-            5)
+            8)
                 if yesno_box "Shutdown" "Shutdown the system now?"; then
                     poweroff
                 fi
@@ -71,6 +78,170 @@ system_change_password() {
         passwd ethereum
         read -p "Press Enter to continue..."
     fi
+}
+
+system_timezone() {
+    # Get current timezone
+    CURRENT_TZ=$(timedatectl show --property=Timezone --value 2>/dev/null || echo "UTC")
+
+    # Common timezones for Europe (most likely for this project)
+    CHOICE=$(whiptail --title "Set Timezone" \
+        --menu "Current: $CURRENT_TZ\n\nSelect timezone:" 24 $TERM_WIDTH 14 \
+        "Europe/Warsaw" "Poland (CET/CEST)" \
+        "Europe/London" "UK (GMT/BST)" \
+        "Europe/Berlin" "Germany (CET/CEST)" \
+        "Europe/Paris" "France (CET/CEST)" \
+        "Europe/Amsterdam" "Netherlands (CET/CEST)" \
+        "Europe/Zurich" "Switzerland (CET/CEST)" \
+        "Europe/Vienna" "Austria (CET/CEST)" \
+        "Europe/Prague" "Czech Republic (CET/CEST)" \
+        "America/New_York" "US Eastern (EST/EDT)" \
+        "America/Los_Angeles" "US Pacific (PST/PDT)" \
+        "Asia/Singapore" "Singapore (SGT)" \
+        "Asia/Tokyo" "Japan (JST)" \
+        "UTC" "Coordinated Universal Time" \
+        "OTHER" "Enter manually..." \
+        3>&1 1>&2 2>&3)
+
+    if [ -z "$CHOICE" ]; then
+        return
+    fi
+
+    if [ "$CHOICE" = "OTHER" ]; then
+        # Show available timezones
+        CHOICE=$(input_box "Enter Timezone" "Enter timezone (e.g., Europe/Warsaw):\n\nList available: timedatectl list-timezones" "$CURRENT_TZ")
+        if [ -z "$CHOICE" ]; then
+            return
+        fi
+    fi
+
+    # Validate timezone exists
+    if ! timedatectl list-timezones | grep -qx "$CHOICE"; then
+        msg_box "Error" "Invalid timezone: $CHOICE\n\nRun 'timedatectl list-timezones' to see available options."
+        return
+    fi
+
+    if [ "$CHOICE" = "$CURRENT_TZ" ]; then
+        return
+    fi
+
+    # Set timezone
+    timedatectl set-timezone "$CHOICE"
+    msg_box "Success" "Timezone set to: $CHOICE\n\nCurrent time: $(date '+%Y-%m-%d %H:%M:%S %Z')"
+}
+
+system_keyboard() {
+    # Get current keyboard layout
+    CURRENT_LAYOUT=$(localectl status 2>/dev/null | grep "X11 Layout" | awk '{print $3}')
+    [ -z "$CURRENT_LAYOUT" ] && CURRENT_LAYOUT=$(cat /etc/default/keyboard 2>/dev/null | grep XKBLAYOUT | cut -d'"' -f2)
+    [ -z "$CURRENT_LAYOUT" ] && CURRENT_LAYOUT="us"
+
+    CHOICE=$(whiptail --title "Set Keyboard Layout" \
+        --menu "Current: $CURRENT_LAYOUT\n\nSelect keyboard layout:" 22 $TERM_WIDTH 12 \
+        "pl" "Polish" \
+        "us" "US English" \
+        "uk" "UK English" \
+        "de" "German" \
+        "fr" "French" \
+        "es" "Spanish" \
+        "it" "Italian" \
+        "pt" "Portuguese" \
+        "nl" "Dutch" \
+        "cz" "Czech" \
+        "OTHER" "Enter manually..." \
+        3>&1 1>&2 2>&3)
+
+    if [ -z "$CHOICE" ]; then
+        return
+    fi
+
+    if [ "$CHOICE" = "OTHER" ]; then
+        CHOICE=$(input_box "Enter Layout" "Enter keyboard layout code (e.g., pl, us, de):\n\nList available: localectl list-keymaps" "$CURRENT_LAYOUT")
+        if [ -z "$CHOICE" ]; then
+            return
+        fi
+    fi
+
+    if [ "$CHOICE" = "$CURRENT_LAYOUT" ]; then
+        return
+    fi
+
+    # Set keyboard layout
+    localectl set-keymap "$CHOICE" 2>/dev/null
+    localectl set-x11-keymap "$CHOICE" 2>/dev/null
+
+    # Also update /etc/default/keyboard for console
+    if [ -f /etc/default/keyboard ]; then
+        sed -i "s/^XKBLAYOUT=.*/XKBLAYOUT=\"$CHOICE\"/" /etc/default/keyboard
+    fi
+
+    msg_box "Success" "Keyboard layout set to: $CHOICE\n\nChanges may require a reboot to fully apply."
+}
+
+system_time_sync() {
+    INFO="═══════════════════════════════════════════════════════════\n"
+    INFO+="                    TIME SYNCHRONIZATION\n"
+    INFO+="═══════════════════════════════════════════════════════════\n\n"
+
+    # Current time info
+    INFO+="▶ CURRENT TIME\n"
+    INFO+="─────────────────────────────────────────────────────────\n"
+    INFO+="  Local:    $(date '+%Y-%m-%d %H:%M:%S %Z')\n"
+    INFO+="  UTC:      $(date -u '+%Y-%m-%d %H:%M:%S UTC')\n"
+    INFO+="  Timezone: $(timedatectl show --property=Timezone --value 2>/dev/null || echo 'N/A')\n"
+
+    # Chrony status
+    INFO+="\n▶ CHRONY STATUS\n"
+    INFO+="─────────────────────────────────────────────────────────\n"
+
+    if systemctl is-active --quiet chronyd 2>/dev/null || systemctl is-active --quiet chrony 2>/dev/null; then
+        INFO+="  Service: Running ✓\n"
+
+        # Chrony tracking info
+        TRACKING=$(chronyc tracking 2>/dev/null)
+        if [ -n "$TRACKING" ]; then
+            REF_ID=$(echo "$TRACKING" | grep "Reference ID" | cut -d: -f2 | xargs)
+            STRATUM=$(echo "$TRACKING" | grep "Stratum" | awk '{print $3}')
+            SYSTEM_TIME=$(echo "$TRACKING" | grep "System time" | cut -d: -f2 | xargs)
+            LAST_OFFSET=$(echo "$TRACKING" | grep "Last offset" | cut -d: -f2 | xargs)
+            RMS_OFFSET=$(echo "$TRACKING" | grep "RMS offset" | cut -d: -f2 | xargs)
+
+            INFO+="  Reference: $REF_ID\n"
+            INFO+="  Stratum:   $STRATUM\n"
+            INFO+="  Offset:    $LAST_OFFSET\n"
+            INFO+="  RMS:       $RMS_OFFSET\n"
+        fi
+
+        # Sync status
+        INFO+="\n▶ SYNC SOURCES\n"
+        INFO+="─────────────────────────────────────────────────────────\n"
+        SOURCES=$(chronyc sources 2>/dev/null | tail -n +3)
+        if [ -n "$SOURCES" ]; then
+            # Show first few sources
+            while IFS= read -r line; do
+                # Parse source line: MS Name/IP address Stratum Poll Reach LastRx Last sample
+                INFO+="  $line\n"
+            done <<< "$(echo "$SOURCES" | head -5)"
+        else
+            INFO+="  No sources available\n"
+        fi
+
+        # NTP synchronized?
+        NTP_SYNC=$(timedatectl show --property=NTPSynchronized --value 2>/dev/null)
+        INFO+="\n▶ SYNCHRONIZATION\n"
+        INFO+="─────────────────────────────────────────────────────────\n"
+        if [ "$NTP_SYNC" = "yes" ]; then
+            INFO+="  NTP Synchronized: Yes ✓\n"
+        else
+            INFO+="  NTP Synchronized: No ✗\n"
+            INFO+="  (May take a few minutes after boot)\n"
+        fi
+    else
+        INFO+="  Service: NOT RUNNING ✗\n"
+        INFO+="\n  To start: sudo systemctl start chronyd\n"
+    fi
+
+    whiptail --title "Time Sync Status (Chrony)" --scrolltext --msgbox "$INFO" 26 $TERM_WIDTH
 }
 
 system_info() {
