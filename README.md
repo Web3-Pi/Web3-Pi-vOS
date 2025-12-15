@@ -149,7 +149,7 @@ After your node is fully synced, import your validator keys:
 
 4. Enter your keystore password when prompted
 
-5. After successful import, you'll be asked to delete the original files (recommended - they're no longer needed on this device)
+5. After successful import, keystore files will be moved to the encrypted LUKS partition (needed for Voluntary Exit)
 
 ### Option B: Via USB Drive
 
@@ -157,7 +157,7 @@ After your node is fully synced, import your validator keys:
 2. Insert USB into Raspberry Pi
 3. Use Control Panel: **Validator Management** → **Import Validator Keys** → **From USB drive**
 
-> **Note:** Always keep a backup of your keystore files in a secure offline location.
+> **Note:** Always keep a backup of your keystore files in a secure offline location. These files are required for Voluntary Exit.
 
 ---
 
@@ -169,6 +169,7 @@ After your node is fully synced, import your validator keys:
 | Geth data | `/var/lib/el` |
 | Nimbus beacon data | `/var/lib/cl` |
 | Validator keys | `/home/signer/keys` (encrypted LUKS) |
+| Keystore files | `/home/signer/keys/*.json` (for Voluntary Exit) |
 | Key import staging | `~/validator_keys` |
 | Scripts | `/opt/web3pi/` |
 | Logs | `/opt/web3pi/logs/` |

@@ -152,19 +152,18 @@ validator_cleanup_staging() {
     COUNT=$(echo "$KEYSTORES" | wc -l)
     LIST=$(echo "$KEYSTORES" | xargs -n1 basename)
 
-    MSG="The original keystore files are no longer needed on this device\n"
-    MSG+="after successful import.\n\n"
-    MSG+="IMPORTANT: Keep a backup copy of these files in a secure\n"
-    MSG+="location (offline computer, encrypted USB drive, etc.)\n"
-    MSG+="in case you need to restore or migrate your validator.\n\n"
-    MSG+="Delete the following $COUNT file(s) from ~/validator_keys?\n\n"
+    MSG="The original keystore files will be moved to the encrypted\n"
+    MSG+="LUKS partition. They are needed for Voluntary Exit.\n\n"
+    MSG+="Move the following $COUNT file(s) to encrypted storage?\n\n"
     MSG+="$LIST"
 
-    if yesno_box "Cleanup Original Files" "$MSG"; then
-        rm -f $KEYSTORES
-        msg_box "Cleanup Complete" "Original keystore files deleted.\n\nYour validator keys are safely stored\nin the encrypted LUKS partition."
+    if yesno_box "Move to Encrypted Storage" "$MSG"; then
+        mv $KEYSTORES /home/signer/keys/
+        chown signer:signer /home/signer/keys/keystore-*.json 2>/dev/null
+        chmod 600 /home/signer/keys/keystore-*.json 2>/dev/null
+        msg_box "Move Complete" "Keystore files moved to encrypted LUKS partition.\n\nLocation: /home/signer/keys/\n\nThese files are needed for Voluntary Exit."
     else
-        msg_box "Files Kept" "Original files kept in ~/validator_keys/\n\nYou can delete them manually later:\n  rm ~/validator_keys/keystore-*.json"
+        msg_box "Files Kept in Staging" "Files kept in ~/validator_keys/\n\nWARNING: This location is NOT encrypted!\nConsider moving them manually:\n  sudo mv ~/validator_keys/*.json /home/signer/keys/"
     fi
 }
 
