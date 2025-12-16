@@ -65,6 +65,11 @@ mkdir -p /opt/web3pi                                    # Create a directory for
 mkdir -p /opt/web3pi/logs                               # Create a directory for Web3 Pi logs
 chown -R ethereum:ethereum /opt/web3pi 					# Set ownership to 'ethereum' user
 
+# Create home directory for ethereum user (deferred from useradd -M)
+mkdir -p /home/ethereum
+chown ethereum:ethereum /home/ethereum
+chmod 750 /home/ethereum
+
 # Staging directory for validator keystore import (easy SCP access)
 mkdir -p /home/ethereum/validator_keys
 chown ethereum:ethereum /home/ethereum/validator_keys
@@ -100,6 +105,7 @@ apt install -y software-properties-common apt-utils chrony avahi-daemon git git-
 apt install -y nvme-cli jq speedtest-cli file vim net-tools telnet apt-transport-https gdisk iotop 
 apt install -y screen bpytop cryptsetup unattended-upgrades dialog
 # development packages
+apt install -y smartmontools fio stress-ng neofetch 
 # apt install -y python3-pip python3-netifaces python3-dev libpython3-dev python3-venv
 # apt install -y gcc libraspberrypi-bin screen ccze iw flashrom figlet neofetch 
 #apt install -y iproute2 iputils-ping dnsutils gawk bsdutils # for Wan Failover script
