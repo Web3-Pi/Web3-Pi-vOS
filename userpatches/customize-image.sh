@@ -106,11 +106,8 @@ apt install -y screen bpytop cryptsetup unattended-upgrades dialog
 #apt install -y apcupsd # For UPS support
 #--------------------------------------------------------------------------------------------
 
-## UFW (firewall) ###########################################################################
-apt install -y ufw
-
-# Disable IPv6 in UFW (don't manage IPv6 rules)
-sed -i 's/^IPV6=yes/IPV6=no/' /etc/default/ufw
+## nftables (firewall) ######################################################################
+apt install -y nftables
 
 # Disable IPv6 at system level
 cat >> /etc/sysctl.d/99-disable-ipv6.conf << EOF
@@ -119,23 +116,11 @@ net.ipv6.conf.default.disable_ipv6 = 1
 net.ipv6.conf.lo.disable_ipv6 = 1
 EOF
 
-# Default policies
-ufw default deny incoming
-ufw default allow outgoing
+# Copy nftables configuration
+cp /tmp/overlay/etc/nftables.conf /etc/nftables.conf
 
-# SSH (rate limited)
-ufw limit 22/tcp comment "SSH (rate limited)"
-
-# Geth P2P
-ufw allow 30303/tcp comment "Geth P2P TCP"
-ufw allow 30303/udp comment "Geth P2P UDP"
-
-# Nimbus P2P
-ufw allow 9000/tcp comment "Nimbus P2P TCP"
-ufw allow 9000/udp comment "Nimbus P2P UDP"
-
-# Enable firewall
-ufw --force enable
+# Enable nftables service
+systemctl enable nftables
 #-------------------------------------------------------------------------------------------
 
 
@@ -238,9 +223,10 @@ passwd --lock root
 # Disable root login via SSH
 sed -i 's/^PermitRootLogin yes/PermitRootLogin no/' /etc/ssh/sshd_config
 ## Disable password authentication via SSH
-#ToDo
+# ToDo
 #sed -i 's/^PasswordAuthentication yes/PasswordAuthentication no/' /etc/ssh/sshd_config
 #sed -i 's/^#PasswordAuthentication yes/PasswordAuthentication no/' /etc/ssh/sshd_config
+# Note: This can be configured later via control panel
 #--------------------------------------------------------------------------------------------
 
 exit 0

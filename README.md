@@ -14,7 +14,7 @@ Web3 Pi Staking provides a pre-configured environment for running:
 - **Nimbus** - Consensus Layer client (beacon node + validator)
 
 With security features:
-- UFW firewall (IPv6 disabled)
+- nftables firewall with restrictive egress policy (IPv6 disabled)
 - LUKS encrypted storage for validator keys
 - SSH key-based authentication
 - Separate system users for each component
@@ -188,7 +188,7 @@ sudo systemctl start|stop|restart|status nimbus-beacon-node
 sudo systemctl start|stop|restart|status nimbus-validator
 
 # Firewall status
-sudo ufw status numbered
+sudo nft list ruleset
 
 # Disk usage
 df -h
@@ -223,11 +223,61 @@ sudo journalctl -u nimbus-beacon-node -n 50
 ### Sync issues
 - Use Control Panel → **Eth Network Configuration** to verify correct network
 - Check internet connectivity
-- Verify firewall allows P2P ports: `sudo ufw status`
+- Verify firewall allows P2P ports: `sudo nft list ruleset`
 
 ### LUKS issues
 - Use Control Panel → **LUKS Encrypted Storage** to manage encryption
 - Ensure you're using the correct passphrase
 - Check if partition exists: `lsblk`
+
+---
+
+## Additional Security Hardening (Optional)
+
+The default firewall configuration allows DNS queries to any server (for DHCP compatibility). For maximum security, you can restrict DNS to specific trusted resolvers.
+
+### Restrict DNS to Trusted Resolvers
+
+1. Edit `/etc/nftables.conf` and replace:
+   ```nft
+   # DNS - open to all (DHCP compatibility)
+   udp dport 53 accept
+   tcp dport 53 accept
+   ```
+
+   With:
+   ```nft
+   # DNS - restricted to trusted resolvers
+   udp dport 53 ip daddr { 1.1.1.1, 8.8.8.8, 9.9.9.9 } accept
+   tcp dport 53 ip daddr { 1.1.1.1, 8.8.8.8, 9.9.9.9 } accept
+   ```
+
+2. Configure systemd-networkd to use these DNS servers (ignore DHCP DNS):
+
+   Create `/etc/systemd/network/10-eth.network`:
+   ```ini
+   [Match]
+   Name=eth* end*
+
+   [Network]
+   DHCP=yes
+   DNS=1.1.1.1
+   DNS=8.8.8.8
+   DNS=9.9.9.9
+
+   [DHCP]
+   UseDNS=false
+   ```
+
+3. Apply changes:
+   ```bash
+   sudo systemctl restart systemd-networkd
+   sudo systemctl restart nftables
+   ```
+
+This configuration:
+- Prevents DNS hijacking from malicious DHCP servers
+- Ensures consistent DNS resolution
+- Blocks outbound DNS to unauthorized servers
 
 ---
