@@ -45,6 +45,16 @@ fi
 useradd -M -s /bin/bash ethereum
 echo "ethereum:ethereum" | chpasswd
 
+# Add ethereum user to required groups
+# sudo - allows executing commands as root
+# netdev - manage network interfaces without sudo
+# systemd-journal - view system logs with journalctl
+# dialout - access serial ports (UART, Arduino)
+# plugdev - access hot-plugged devices (USB)
+for grp in sudo netdev systemd-journal dialout plugdev; do
+    usermod -aG $grp ethereum
+done
+
 # Pre-create 'el'
 adduser --system --home /var/lib/el --group el
 
