@@ -68,6 +68,9 @@ adduser --system --no-create-home --shell /usr/sbin/nologin --group signer
 ## Misc #####################################################################################
 rm /root/.not_logged_in_yet     # Remove any first-login instructions
 chmod +x /etc/update-motd.d/*   # Enable motd
+
+# Fix MOTD banner (workaround for Armbian build bug that doesn't write VENDORPRETTYNAME)
+echo 'VENDORPRETTYNAME="Web3 Pi Staking"' >> /etc/armbian-image-release
 #--------------------------------------------------------------------------------------------
 
 ## Directories structure ####################################################################
