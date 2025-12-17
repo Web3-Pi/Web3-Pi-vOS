@@ -146,6 +146,11 @@ cp /tmp/overlay/etc/nftables.conf /etc/nftables.conf
 systemctl enable nftables
 #-------------------------------------------------------------------------------------------
 
+## WiFi stability fix #######################################################################
+# Disable WiFi power save when wlan0 interface comes up (udev rule)
+mkdir -p /etc/udev/rules.d
+cp /tmp/overlay/etc/udev/rules.d/99-wifi-powersave.rules /etc/udev/rules.d/
+#-------------------------------------------------------------------------------------------
 
 ## Add APT repository #######################################################################
 # Nimbus repository
