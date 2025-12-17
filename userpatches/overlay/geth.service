@@ -41,7 +41,11 @@ ExecStart=/usr/bin/geth \
     --authrpc.vhosts=localhost \
     --authrpc.jwtsecret=/var/lib/el/jwt.hex \
     --syncmode=snap \
-    --cache=8192
+    --cache=2048
+
+# Memory limits (cgroups v2)
+MemoryHigh=8G
+#MemorySwapMax=4G
 
 # Security hardening
 NoNewPrivileges=yes
