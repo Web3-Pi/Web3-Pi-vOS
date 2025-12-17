@@ -61,6 +61,10 @@ adduser --system --home /var/lib/el --group el
 # Pre-create 'cl'
 adduser --system --home /var/lib/cl --group cl
 
+# Set secure permissions for client data directories
+chmod 750 /var/lib/el  # 750: group el can access (cl needs jwt.hex)
+chmod 700 /var/lib/cl  # 700: Nimbus requirement
+
 # Pre-create 'signer'
 adduser --system --no-create-home --shell /usr/sbin/nologin --group signer
 #--------------------------------------------------------------------------------------------
