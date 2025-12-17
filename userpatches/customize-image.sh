@@ -45,6 +45,16 @@ fi
 useradd -M -s /bin/bash ethereum
 echo "ethereum:ethereum" | chpasswd
 
+# Add ethereum user to required groups
+# sudo - allows executing commands as root
+# netdev - manage network interfaces without sudo
+# systemd-journal - view system logs with journalctl
+# dialout - access serial ports (UART, Arduino)
+# plugdev - access hot-plugged devices (USB)
+for grp in sudo netdev systemd-journal dialout plugdev; do
+    usermod -aG $grp ethereum
+done
+
 # Pre-create 'el'
 adduser --system --home /var/lib/el --group el
 
@@ -58,12 +68,20 @@ adduser --system --no-create-home --shell /usr/sbin/nologin --group signer
 ## Misc #####################################################################################
 rm /root/.not_logged_in_yet     # Remove any first-login instructions
 chmod +x /etc/update-motd.d/*   # Enable motd
+
+# Fix MOTD banner (workaround for Armbian build bug that doesn't write VENDORPRETTYNAME)
+echo 'VENDORPRETTYNAME="Web3 Pi Staking"' >> /etc/armbian-image-release
 #--------------------------------------------------------------------------------------------
 
 ## Directories structure ####################################################################
 mkdir -p /opt/web3pi                                    # Create a directory for Web3 Pi
 mkdir -p /opt/web3pi/logs                               # Create a directory for Web3 Pi logs
 chown -R ethereum:ethereum /opt/web3pi 					# Set ownership to 'ethereum' user
+
+# Create home directory for ethereum user (deferred from useradd -M)
+mkdir -p /home/ethereum
+chown ethereum:ethereum /home/ethereum
+chmod 750 /home/ethereum
 
 # Staging directory for validator keystore import (easy SCP access)
 mkdir -p /home/ethereum/validator_keys
@@ -100,17 +118,15 @@ apt install -y software-properties-common apt-utils chrony avahi-daemon git git-
 apt install -y nvme-cli jq speedtest-cli file vim net-tools telnet apt-transport-https gdisk iotop 
 apt install -y screen bpytop cryptsetup unattended-upgrades dialog
 # development packages
+apt install -y smartmontools fio stress-ng neofetch 
 # apt install -y python3-pip python3-netifaces python3-dev libpython3-dev python3-venv
 # apt install -y gcc libraspberrypi-bin screen ccze iw flashrom figlet neofetch 
 #apt install -y iproute2 iputils-ping dnsutils gawk bsdutils # for Wan Failover script
 #apt install -y apcupsd # For UPS support
 #--------------------------------------------------------------------------------------------
 
-## UFW (firewall) ###########################################################################
-apt install -y ufw
-
-# Disable IPv6 in UFW (don't manage IPv6 rules)
-sed -i 's/^IPV6=yes/IPV6=no/' /etc/default/ufw
+## nftables (firewall) ######################################################################
+apt install -y nftables
 
 # Disable IPv6 at system level
 cat >> /etc/sysctl.d/99-disable-ipv6.conf << EOF
@@ -119,23 +135,11 @@ net.ipv6.conf.default.disable_ipv6 = 1
 net.ipv6.conf.lo.disable_ipv6 = 1
 EOF
 
-# Default policies
-ufw default deny incoming
-ufw default allow outgoing
+# Copy nftables configuration
+cp /tmp/overlay/etc/nftables.conf /etc/nftables.conf
 
-# SSH (rate limited)
-ufw limit 22/tcp comment "SSH (rate limited)"
-
-# Geth P2P
-ufw allow 30303/tcp comment "Geth P2P TCP"
-ufw allow 30303/udp comment "Geth P2P UDP"
-
-# Nimbus P2P
-ufw allow 9000/tcp comment "Nimbus P2P TCP"
-ufw allow 9000/udp comment "Nimbus P2P UDP"
-
-# Enable firewall
-ufw --force enable
+# Enable nftables service
+systemctl enable nftables
 #-------------------------------------------------------------------------------------------
 
 
@@ -238,9 +242,10 @@ passwd --lock root
 # Disable root login via SSH
 sed -i 's/^PermitRootLogin yes/PermitRootLogin no/' /etc/ssh/sshd_config
 ## Disable password authentication via SSH
-#ToDo
+# ToDo
 #sed -i 's/^PasswordAuthentication yes/PasswordAuthentication no/' /etc/ssh/sshd_config
 #sed -i 's/^#PasswordAuthentication yes/PasswordAuthentication no/' /etc/ssh/sshd_config
+# Note: This can be configured later via control panel
 #--------------------------------------------------------------------------------------------
 
 exit 0

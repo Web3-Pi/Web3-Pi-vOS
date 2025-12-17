@@ -54,11 +54,9 @@ GETH_PORT=${GETH_PORT:-30303}
 # Nimbus P2P port (TCP/UDP)
 NIMBUS_PORT=${NIMBUS_PORT:-9000}
 
-# NOTE: If you change ports, update UFW firewall rules:
-#   sudo ufw delete allow <old_port>/tcp
-#   sudo ufw delete allow <old_port>/udp
-#   sudo ufw allow <new_port>/tcp
-#   sudo ufw allow <new_port>/udp
+# NOTE: If you change ports, update /etc/nftables.conf:
+#   Change 'dport <old_port>' to 'dport <new_port>'
+#   sudo systemctl restart nftables
 #   sudo systemctl daemon-reload
 #   sudo systemctl restart geth nimbus-beacon-node
 

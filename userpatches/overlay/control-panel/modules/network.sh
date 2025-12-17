@@ -49,7 +49,7 @@ network_geth_port() {
         OLD_PORT=$GETH_PORT
         GETH_PORT=$NEW_PORT
         save_config
-        msg_box "Port Changed" "Geth port changed: $OLD_PORT -> $NEW_PORT\n\nUpdate firewall:\n  sudo ufw delete allow $OLD_PORT/tcp\n  sudo ufw delete allow $OLD_PORT/udp\n  sudo ufw allow $NEW_PORT/tcp\n  sudo ufw allow $NEW_PORT/udp"
+        msg_box "Port Changed" "Geth port changed: $OLD_PORT -> $NEW_PORT\n\nUpdate /etc/nftables.conf:\n  Change 'dport $OLD_PORT' to 'dport $NEW_PORT'\n  Then: sudo systemctl restart nftables"
     fi
 }
 
@@ -61,6 +61,6 @@ network_nimbus_port() {
         OLD_PORT=$NIMBUS_PORT
         NIMBUS_PORT=$NEW_PORT
         save_config
-        msg_box "Port Changed" "Nimbus port changed: $OLD_PORT -> $NEW_PORT\n\nUpdate firewall:\n  sudo ufw delete allow $OLD_PORT/tcp\n  sudo ufw delete allow $OLD_PORT/udp\n  sudo ufw allow $NEW_PORT/tcp\n  sudo ufw allow $NEW_PORT/udp"
+        msg_box "Port Changed" "Nimbus port changed: $OLD_PORT -> $NEW_PORT\n\nUpdate /etc/nftables.conf:\n  Change 'dport $OLD_PORT' to 'dport $NEW_PORT'\n  Then: sudo systemctl restart nftables"
     fi
 }
