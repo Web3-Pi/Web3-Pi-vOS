@@ -17,8 +17,9 @@ system_menu() {
             "5" "Time Sync Status (Chrony)" \
             "6" "Edit Boot Config (config.txt)" \
             "7" "System Information" \
-            "8" "Reboot System" \
-            "9" "Shutdown System" \
+            "8" "Update Firmware (EEPROM)" \
+            "9" "Reboot System" \
+            "A" "Shutdown System" \
             "0" "Back to Main Menu" \
             3>&1 1>&2 2>&3)
 
@@ -30,12 +31,13 @@ system_menu() {
             5) system_time_sync ;;
             6) system_edit_config ;;
             7) system_info ;;
-            8)
+            8) system_firmware_update ;;
+            9)
                 if yesno_box "Reboot" "Reboot the system now?"; then
                     reboot
                 fi
                 ;;
-            9)
+            A)
                 if yesno_box "Shutdown" "Shutdown the system now?"; then
                     poweroff
                 fi
@@ -381,4 +383,169 @@ system_info() {
     fi
 
     whiptail --title "System Information" --scrolltext --msgbox "$INFO" 30 $TERM_WIDTH
+}
+
+system_firmware_update() {
+    # Check if rpi-eeprom-update is available
+    if ! command -v rpi-eeprom-update &>/dev/null; then
+        msg_box "Error" "rpi-eeprom-update not found.\n\nThis tool is only available on Raspberry Pi."
+        return
+    fi
+
+    # Get current firmware status
+    EEPROM_OUTPUT=$(rpi-eeprom-update 2>&1)
+    CURRENT=$(echo "$EEPROM_OUTPUT" | grep "CURRENT" | sed 's/.*CURRENT: //')
+
+    while true; do
+        CHOICE=$(whiptail --title "Update Firmware (EEPROM)" \
+            --menu "Current: $CURRENT\n\nSelect firmware branch:" \
+            $TERM_HEIGHT $TERM_WIDTH 6 \
+            "1" "Release (stable, recommended)" \
+            "2" "Latest (beta, from GitHub master)" \
+            "3" "View Current Status" \
+            "0" "Back" \
+            3>&1 1>&2 2>&3)
+
+        case $CHOICE in
+            1) system_firmware_update_release ;;
+            2) system_firmware_update_latest ;;
+            3) system_firmware_status ;;
+            0|"") return ;;
+        esac
+    done
+}
+
+system_firmware_status() {
+    INFO="═══════════════════════════════════════════════════════════\n"
+    INFO+="                  RASPBERRY PI FIRMWARE\n"
+    INFO+="═══════════════════════════════════════════════════════════\n\n"
+
+    EEPROM_OUTPUT=$(rpi-eeprom-update 2>&1)
+
+    CURRENT=$(echo "$EEPROM_OUTPUT" | grep "CURRENT" | sed 's/.*CURRENT: //')
+    LATEST=$(echo "$EEPROM_OUTPUT" | grep "LATEST" | sed 's/.*LATEST: //')
+
+    INFO+="▶ BOOTLOADER EEPROM\n"
+    INFO+="─────────────────────────────────────────────────────────\n"
+    INFO+="  Current: $CURRENT\n"
+    INFO+="  Latest (release): $LATEST\n\n"
+
+    if echo "$EEPROM_OUTPUT" | grep -q "BOOTLOADER: up to date"; then
+        INFO+="  Status: Up to date ✓\n"
+    else
+        INFO+="  Status: Update available\n"
+    fi
+
+    msg_box "Firmware Status" "$INFO"
+}
+
+system_firmware_update_release() {
+    EEPROM_OUTPUT=$(rpi-eeprom-update 2>&1)
+
+    # Check if update is needed
+    if echo "$EEPROM_OUTPUT" | grep -q "BOOTLOADER: up to date"; then
+        msg_box "Firmware Status" "Bootloader is already up to date (release branch)."
+        return
+    fi
+
+    CURRENT=$(echo "$EEPROM_OUTPUT" | grep "CURRENT" | sed 's/.*CURRENT: //')
+    LATEST=$(echo "$EEPROM_OUTPUT" | grep "LATEST" | sed 's/.*LATEST: //')
+
+    if ! yesno_box "Update Firmware (Release)" "Current: $CURRENT\nLatest:  $LATEST\n\nApply release firmware update?\n\nA reboot will be required after the update."; then
+        return
+    fi
+
+    clear
+    echo "═══════════════════════════════════════════════════════════"
+    echo "         UPDATING FIRMWARE (RELEASE BRANCH)"
+    echo "═══════════════════════════════════════════════════════════"
+    echo ""
+
+    if rpi-eeprom-update -a; then
+        echo ""
+        echo "═══════════════════════════════════════════════════════════"
+        echo "  Firmware update staged successfully."
+        echo "  Reboot required to apply the update."
+        echo "═══════════════════════════════════════════════════════════"
+        echo ""
+        read -p "Press Enter to continue..."
+
+        if yesno_box "Reboot Now?" "Firmware update staged.\n\nReboot now to apply the update?"; then
+            reboot
+        fi
+    else
+        echo ""
+        echo "═══════════════════════════════════════════════════════════"
+        echo "  Firmware update failed. Check the output above."
+        echo "═══════════════════════════════════════════════════════════"
+        echo ""
+        read -p "Press Enter to continue..."
+    fi
+}
+
+system_firmware_update_latest() {
+    if ! yesno_box "Update Firmware (Latest/Beta)" "This will install the LATEST firmware from GitHub master branch.\n\nThis is BETA firmware and may be unstable.\n\nA reboot will be required after the update.\n\nContinue?"; then
+        return
+    fi
+
+    # Check for git
+    if ! command -v git &>/dev/null; then
+        msg_box "Error" "git is not installed.\n\nInstall with: apt install git"
+        return
+    fi
+
+    clear
+    echo "═══════════════════════════════════════════════════════════"
+    echo "         UPDATING FIRMWARE (LATEST/BETA BRANCH)"
+    echo "═══════════════════════════════════════════════════════════"
+    echo ""
+    echo "Cloning rpi-eeprom repository from GitHub..."
+    echo ""
+
+    # Clone/update the repository
+    EEPROM_DIR="/opt/web3pi/rpi-eeprom"
+
+    if [ -d "$EEPROM_DIR" ]; then
+        echo "Updating existing repository..."
+        cd "$EEPROM_DIR" && git fetch --all && git reset --hard origin/master
+    else
+        echo "Cloning repository..."
+        mkdir -p /opt/web3pi
+        git clone -b master https://github.com/raspberrypi/rpi-eeprom "$EEPROM_DIR"
+    fi
+
+    if [ $? -ne 0 ]; then
+        echo ""
+        echo "═══════════════════════════════════════════════════════════"
+        echo "  Failed to clone/update repository."
+        echo "═══════════════════════════════════════════════════════════"
+        echo ""
+        read -p "Press Enter to continue..."
+        return
+    fi
+
+    echo ""
+    echo "Installing latest firmware..."
+    echo ""
+
+    if "$EEPROM_DIR/test/install" -b; then
+        echo ""
+        echo "═══════════════════════════════════════════════════════════"
+        echo "  Latest firmware installed successfully."
+        echo "  Reboot required to apply the update."
+        echo "═══════════════════════════════════════════════════════════"
+        echo ""
+        read -p "Press Enter to continue..."
+
+        if yesno_box "Reboot Now?" "Latest firmware installed.\n\nReboot now to apply the update?"; then
+            reboot
+        fi
+    else
+        echo ""
+        echo "═══════════════════════════════════════════════════════════"
+        echo "  Firmware installation failed. Check the output above."
+        echo "═══════════════════════════════════════════════════════════"
+        echo ""
+        read -p "Press Enter to continue..."
+    fi
 }
