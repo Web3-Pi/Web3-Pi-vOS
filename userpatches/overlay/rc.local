@@ -102,9 +102,25 @@ if [ "$(get_install_stage)" -eq 0 ]; then
     # Force password change on first login (optional)
     chage -d 0 ethereum
     #----------------------------------------------------------------------------------------
-    
+
+    # Wait for apt locks to be released
+    wait_for_apt() {
+        local max_wait=120
+        local waited=0
+        while fuser /var/lib/dpkg/lock-frontend /var/cache/debconf/config.dat >/dev/null 2>&1; do
+            if [ $waited -ge $max_wait ]; then
+                echolog "Timeout waiting for apt lock after ${max_wait}s"
+                return 1
+            fi
+            echolog "Waiting for apt lock to be released..."
+            sleep 5
+            waited=$((waited + 5))
+        done
+        return 0
+    }
+
     # Setup unattended upgrades
-    dpkg-reconfigure --priority=low unattended-upgrades
+    wait_for_apt && dpkg-reconfigure --priority=low unattended-upgrades
 
     ## LUKS info - setup is now manual ########################################################
     echo ""
