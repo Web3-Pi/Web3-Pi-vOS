@@ -106,6 +106,11 @@ cp /tmp/overlay/rc-local.service /etc/systemd/system/rc-local.service
 systemctl enable rc-local.service
 #--------------------------------------------------------------------------------------------
 
+## SSH key generation service (runs before ssh.service) ######################################
+cp /tmp/overlay/ssh-keygen.service /etc/systemd/system/ssh-keygen.service
+systemctl enable ssh-keygen.service
+#--------------------------------------------------------------------------------------------
+
 ## JWT secret for EL-CL communication #######################################################
 # Generate JWT secret (will be used by both Geth and Nimbus)
 openssl rand -hex 32 > /var/lib/el/jwt.hex
