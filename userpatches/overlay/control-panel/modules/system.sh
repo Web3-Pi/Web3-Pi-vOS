@@ -18,6 +18,7 @@ system_menu() {
             "6" "Edit Boot Config (config.txt)" \
             "7" "System Information" \
             "8" "Update Firmware (EEPROM)" \
+            "B" "OC (Pi-Under-Pressure)" \
             "9" "Reboot System" \
             "A" "Shutdown System" \
             "0" "Back to Main Menu" \
@@ -32,6 +33,7 @@ system_menu() {
             6) system_edit_config ;;
             7) system_info ;;
             8) system_firmware_update ;;
+            B) system_oc_menu ;;
             9)
                 if yesno_box "Reboot" "Reboot the system now?"; then
                     reboot
@@ -548,4 +550,115 @@ system_firmware_update_latest() {
         echo ""
         read -p "Press Enter to continue..."
     fi
+}
+
+system_oc_menu() {
+    # Check if pi-under-pressure is installed
+    local INSTALLED="No"
+    if command -v pi-under-pressure &>/dev/null; then
+        INSTALLED="Yes"
+    fi
+
+    while true; do
+        CHOICE=$(whiptail --title "OC (Pi-Under-Pressure)" \
+            --menu "Stress testing tool for Raspberry Pi\nInstalled: $INSTALLED" \
+            $TERM_HEIGHT $TERM_WIDTH 6 \
+            "1" "Install Pi-Under-Pressure" \
+            "2" "Run Stress Test (5 min)" \
+            "3" "About" \
+            "0" "Back" \
+            3>&1 1>&2 2>&3)
+
+        case $CHOICE in
+            1) system_oc_install ;;
+            2) system_oc_run ;;
+            3) system_oc_about ;;
+            0|"") return ;;
+        esac
+
+        # Refresh installed status
+        if command -v pi-under-pressure &>/dev/null; then
+            INSTALLED="Yes"
+        fi
+    done
+}
+
+system_oc_install() {
+    if command -v pi-under-pressure &>/dev/null; then
+        if ! yesno_box "Already Installed" "Pi-Under-Pressure is already installed.\n\nReinstall?"; then
+            return
+        fi
+    fi
+
+    if ! yesno_box "Install Pi-Under-Pressure" "This will install Pi-Under-Pressure stress testing tool from GitHub.\n\nSource: github.com/cmd0s/Pi-Under-Pressure\n\nContinue?"; then
+        return
+    fi
+
+    clear
+    echo "==============================================================="
+    echo "         INSTALLING PI-UNDER-PRESSURE"
+    echo "==============================================================="
+    echo ""
+
+    if curl -sSL https://raw.githubusercontent.com/cmd0s/Pi-Under-Pressure/main/install.sh | bash; then
+        echo ""
+        echo "==============================================================="
+        echo "  Pi-Under-Pressure installed successfully."
+        echo "==============================================================="
+        echo ""
+    else
+        echo ""
+        echo "==============================================================="
+        echo "  Installation failed. Check the output above."
+        echo "==============================================================="
+        echo ""
+    fi
+
+    read -p "Press Enter to continue..."
+}
+
+system_oc_run() {
+    if ! command -v pi-under-pressure &>/dev/null; then
+        msg_box "Not Installed" "Pi-Under-Pressure is not installed.\n\nPlease install it first using option 1."
+        return
+    fi
+
+    if ! yesno_box "Run Stress Test" "This will run a 5-minute stress test with extended monitoring.\n\nCommand: pi-under-pressure -d 5m -e\n\nThis will stress CPU, RAM, and monitor temperatures.\n\nContinue?"; then
+        return
+    fi
+
+    clear
+    echo "==============================================================="
+    echo "         PI-UNDER-PRESSURE STRESS TEST"
+    echo "==============================================================="
+    echo ""
+    echo "Running: pi-under-pressure -d 5m -e"
+    echo ""
+
+    pi-under-pressure -d 5m -e
+
+    echo ""
+    echo "==============================================================="
+    echo "  Stress test completed."
+    echo "==============================================================="
+    echo ""
+
+    read -p "Press Enter to continue..."
+}
+
+system_oc_about() {
+    INFO="===============================================================\n"
+    INFO+="               PI-UNDER-PRESSURE\n"
+    INFO+="===============================================================\n\n"
+    INFO+="A stress testing tool for Raspberry Pi to verify system\n"
+    INFO+="stability under load, especially useful for testing\n"
+    INFO+="overclocking configurations.\n\n"
+    INFO+="Features:\n"
+    INFO+="  - CPU stress testing\n"
+    INFO+="  - Memory stress testing\n"
+    INFO+="  - Temperature monitoring\n"
+    INFO+="  - Throttling detection\n\n"
+    INFO+="Source: github.com/cmd0s/Pi-Under-Pressure\n"
+
+    msg_box "About Pi-Under-Pressure" "$INFO"
 }
