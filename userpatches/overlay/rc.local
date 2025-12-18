@@ -134,6 +134,7 @@ if [ "$(get_install_stage)" -eq 100 ]; then
   echo "[rc.local] - Installation completed"
   sleep 2
 elif [ "$(get_install_stage)" -ge 1 ]; then
+  : # placeholder for future installation script
 #  echo "[rc.local] - Run main installation script (.install.sh)"
 #  /opt/web3pi/.install.sh
 fi
