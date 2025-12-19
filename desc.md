@@ -25,6 +25,85 @@ Web3-Pi-vOS is a customized Armbian-based operating system designed specifically
 - **Self-Sovereign Staking**: All keys remain on-device, no third-party custody
 - **Ease of Use**: TUI Control Panel for configuration without requiring deep Linux expertise
 
+### Why Armbian?
+
+During development, four operating systems were evaluated for Raspberry Pi 5:
+- **Ubuntu Server 24.04+** (official ARM64 builds)
+- **Raspberry Pi OS Lite** (Debian-based, official)
+- **DietPi** (Debian-based, optimized)
+- **Armbian Minimal** (Ubuntu-based)
+
+**Initial benchmarks** using GeekBench6 showed a significant performance advantage for DietPi and Raspberry Pi OS over Ubuntu-based systems. However, GeekBench6 tests general computing workloads that are quite different from Ethereum node operations.
+
+**Custom Ethereum benchmark** was developed to measure performance relevant to actual staking workloads: [ethBenchmark](https://github.com/cmd0s/ethBenchmark). This specialized tool tests operations that Ethereum clients actually perform:
+
+- Keccak256 hashing
+- ECDSA/secp256k1 signatures
+- BLS12-381 operations (using gnark-crypto)
+- BN256 pairing
+- Merkle Patricia Trie simulation
+- Object pool allocation
+- State cache patterns
+- Sequential I/O throughput
+- Random 4K I/O (bypassing page cache)
+- Batch write simulation
+
+**Results**: With Ethereum-specific benchmarks, DietPi and Raspberry Pi OS showed only a marginal performance advantage over Ubuntu-based systems.
+
+**Decision criteria** shifted from raw performance to:
+
+1. **Build system quality**: Armbian Build System provides deep image customization capabilities
+2. **Package availability**: Geth and Nimbus are available as official APT packages for Ubuntu arm64. On Debian-based systems (Raspberry Pi OS, DietPi), Geth is not available as a package or binary and must be compiled from source
+3. **Customization flexibility**: Armbian allows extensive pre-configuration during image build phase
+
+**Conclusion**: Armbian was selected for its superior build system, official Ethereum client packages, and deep customization capabilities - outweighing the minimal performance difference.
+
+### Client Architecture
+
+Web3-Pi-vOS uses a **split client architecture** separating the Consensus Layer beacon node from the Validator Client:
+
+```
+┌─────────────────────────────────────────────────────────────────
+│                    SPLIT ARCHITECTURE
+├─────────────────────────────────────────────────────────────────
+│
+│   nimbus_beacon_node        (Consensus Layer - CL)
+│   └── Tracks chain head, manages P2P, serves REST API
+│              │
+│              │ REST API (localhost:5052)
+│              ▼
+│   nimbus_validator_client   (Validator/Signer)
+│   └── Signs attestations and proposals, manages keys
+│
+```
+
+**Why not use integrated mode?**
+
+Nimbus beacon node can run with built-in validator functionality (integrated mode). However, splitting into separate processes provides significant advantages:
+
+**Security Isolation**
+- Validator keys are handled by a dedicated `signer` user with no shell access
+- Keys stored on LUKS-encrypted partition, completely separate from beacon node data
+- Compromise of beacon node process does not expose validator keys
+- Reduced attack surface per process
+
+**LUKS Encrypted Storage**
+- Validator keys reside on encrypted `/dev/nvme0n1p3` partition (2 GiB)
+- LUKS2 with AES-XTS-plain64, Argon2id KDF, 512-bit key
+- Must be manually unlocked after each boot - keys never accessible without passphrase
+- Protects against physical theft of NVMe drive
+
+**Performance Benefits**
+- Two separate processes can utilize multiple CPU cores more effectively
+- Critical for Raspberry Pi 5 where single-core performance is limited
+- Validator client has minimal resource requirements, runs independently
+
+**Operational Flexibility**
+- Services can be restarted independently
+- Beacon node updates don't require validator restart
+- Easier debugging - separate logs per component
+- Can run beacon node while validator is stopped (for testing/maintenance)
+
 ---
 
 ## 2. System Topology
