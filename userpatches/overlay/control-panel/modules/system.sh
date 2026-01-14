@@ -19,6 +19,7 @@ system_menu() {
             "7" "System Information" \
             "8" "Update Firmware (EEPROM)" \
             "B" "OC (Pi-Under-Pressure)" \
+            "C" "UPS (Web3-Pi-UPS-Service)" \
             "9" "Reboot System" \
             "A" "Shutdown System" \
             "0" "Back to Main Menu" \
@@ -34,6 +35,7 @@ system_menu() {
             7) system_info ;;
             8) system_firmware_update ;;
             B) system_oc_menu ;;
+            C) system_ups_menu ;;
             9)
                 if yesno_box "Reboot" "Reboot the system now?"; then
                     reboot
@@ -661,4 +663,549 @@ system_oc_about() {
     INFO+="Source: github.com/cmd0s/Pi-Under-Pressure\n"
 
     msg_box "About Pi-Under-Pressure" "$INFO"
+}
+
+# =============================================================================
+# UPS (Web3-Pi-UPS-Service) Functions
+# =============================================================================
+
+system_ups_menu() {
+    while true; do
+        # Check installation and service status
+        local INSTALLED="No"
+        local SERVICE_STATUS="N/A"
+        local ENABLED_STATUS="N/A"
+
+        if [ -f /usr/local/bin/w3p-ups ]; then
+            INSTALLED="Yes"
+            SERVICE_STATUS=$(systemctl is-active w3p-ups 2>/dev/null || echo "inactive")
+            ENABLED_STATUS=$(systemctl is-enabled w3p-ups 2>/dev/null || echo "disabled")
+        fi
+
+        CHOICE=$(whiptail --title "UPS (Web3-Pi-UPS-Service)" \
+            --menu "Installed: $INSTALLED | Service: $SERVICE_STATUS | Boot: $ENABLED_STATUS" \
+            $TERM_HEIGHT $TERM_WIDTH 10 \
+            "1" "Install UPS Service" \
+            "2" "Uninstall UPS Service" \
+            "3" "Service Control" \
+            "4" "Configure UPS" \
+            "5" "View UPS Status" \
+            "6" "View Logs" \
+            "7" "About" \
+            "0" "Back" \
+            3>&1 1>&2 2>&3)
+
+        case $CHOICE in
+            1) system_ups_install ;;
+            2) system_ups_uninstall ;;
+            3) system_ups_service_control ;;
+            4) system_ups_configure ;;
+            5) system_ups_status ;;
+            6) system_ups_logs ;;
+            7) system_ups_about ;;
+            0|"") return ;;
+        esac
+    done
+}
+
+system_ups_install() {
+    if [ -f /usr/local/bin/w3p-ups ]; then
+        if ! yesno_box "Already Installed" "Web3-Pi-UPS-Service is already installed.\n\nReinstall?"; then
+            return
+        fi
+    fi
+
+    if ! yesno_box "Install Web3-Pi-UPS-Service" "This will install Web3-Pi-UPS-Service from GitHub.\n\nSource: github.com/Web3-Pi/Web3-Pi-UPS-Service\n\nThe service provides:\n- Battery monitoring\n- Automatic safe shutdown\n- Configurable thresholds\n\nContinue?"; then
+        return
+    fi
+
+    clear
+    echo "==============================================================="
+    echo "         INSTALLING WEB3-PI-UPS-SERVICE"
+    echo "==============================================================="
+    echo ""
+
+    if curl -fsSL https://raw.githubusercontent.com/Web3-Pi/Web3-Pi-UPS-Service/main/install.sh | bash; then
+        echo ""
+        echo "==============================================================="
+        echo "  Web3-Pi-UPS-Service installed successfully."
+        echo "==============================================================="
+        echo ""
+    else
+        echo ""
+        echo "==============================================================="
+        echo "  Installation failed. Check the output above."
+        echo "==============================================================="
+        echo ""
+    fi
+
+    read -p "Press Enter to continue..."
+}
+
+system_ups_uninstall() {
+    if [ ! -f /usr/local/bin/w3p-ups ]; then
+        msg_box "Not Installed" "Web3-Pi-UPS-Service is not installed."
+        return
+    fi
+
+    if ! yesno_box "Uninstall Web3-Pi-UPS-Service" "This will remove Web3-Pi-UPS-Service.\n\nConfiguration will be preserved in /etc/w3p-ups/\n\nContinue?"; then
+        return
+    fi
+
+    clear
+    echo "==============================================================="
+    echo "         UNINSTALLING WEB3-PI-UPS-SERVICE"
+    echo "==============================================================="
+    echo ""
+
+    if curl -fsSL https://raw.githubusercontent.com/Web3-Pi/Web3-Pi-UPS-Service/main/install.sh | bash -s -- --uninstall; then
+        echo ""
+        echo "==============================================================="
+        echo "  Web3-Pi-UPS-Service uninstalled successfully."
+        echo "==============================================================="
+        echo ""
+    else
+        echo ""
+        echo "==============================================================="
+        echo "  Uninstallation failed. Check the output above."
+        echo "==============================================================="
+        echo ""
+    fi
+
+    read -p "Press Enter to continue..."
+}
+
+system_ups_service_control() {
+    if [ ! -f /usr/local/bin/w3p-ups ]; then
+        msg_box "Not Installed" "Web3-Pi-UPS-Service is not installed.\n\nPlease install it first."
+        return
+    fi
+
+    while true; do
+        STATUS=$(systemctl is-active w3p-ups 2>/dev/null || echo "inactive")
+        ENABLED=$(systemctl is-enabled w3p-ups 2>/dev/null || echo "disabled")
+
+        CHOICE=$(whiptail --title "UPS Service Control" \
+            --menu "Status: $STATUS | Boot: $ENABLED" \
+            $TERM_HEIGHT $TERM_WIDTH 8 \
+            "1" "Start Service" \
+            "2" "Stop Service" \
+            "3" "Restart Service" \
+            "4" "Enable (start on boot)" \
+            "5" "Disable (don't start on boot)" \
+            "6" "View Service Status" \
+            "0" "Back" \
+            3>&1 1>&2 2>&3)
+
+        case $CHOICE in
+            1) systemctl start w3p-ups && msg_box "Success" "UPS Service started." ;;
+            2) systemctl stop w3p-ups && msg_box "Success" "UPS Service stopped." ;;
+            3) systemctl restart w3p-ups && msg_box "Success" "UPS Service restarted." ;;
+            4) systemctl enable w3p-ups && msg_box "Success" "UPS Service enabled." ;;
+            5) systemctl disable w3p-ups && msg_box "Success" "UPS Service disabled." ;;
+            6)
+                STATUS_OUT=$(systemctl status w3p-ups 2>&1 | head -25)
+                whiptail --title "UPS Service Status" --scrolltext --msgbox "$STATUS_OUT" $TERM_HEIGHT $TERM_WIDTH
+                ;;
+            0|"") return ;;
+        esac
+    done
+}
+
+# Helper function to read TOML values
+system_ups_toml_get() {
+    local file="$1"
+    local section="$2"
+    local key="$3"
+
+    # Simple TOML parser - reads value from [section] key = value
+    awk -v section="$section" -v key="$key" '
+        /^\[.*\]$/ { current_section = substr($0, 2, length($0)-2) }
+        current_section == section && $1 == key {
+            gsub(/.*= */, "");
+            gsub(/^"/, "");
+            gsub(/"$/, "");
+            print;
+            exit
+        }
+    ' "$file"
+}
+
+# Helper function to write TOML values
+system_ups_toml_set() {
+    local file="$1"
+    local section="$2"
+    local key="$3"
+    local value="$4"
+    local is_string="$5"  # "true" if value should be quoted
+
+    local temp_file=$(mktemp)
+    local in_section=0
+    local current_section=""
+
+    while IFS= read -r line || [ -n "$line" ]; do
+        # Check for section header
+        if [[ "$line" =~ ^\[.*\]$ ]]; then
+            current_section="${line:1:${#line}-2}"
+            if [ "$current_section" = "$section" ]; then
+                in_section=1
+            else
+                in_section=0
+            fi
+            echo "$line" >> "$temp_file"
+        # Check for key in correct section
+        elif [ $in_section -eq 1 ] && [[ "$line" =~ ^$key[[:space:]]*= ]]; then
+            if [ "$is_string" = "true" ]; then
+                echo "$key = \"$value\"" >> "$temp_file"
+            else
+                echo "$key = $value" >> "$temp_file"
+            fi
+        else
+            echo "$line" >> "$temp_file"
+        fi
+    done < "$file"
+
+    mv "$temp_file" "$file"
+
+    # Restart service if running to apply changes
+    if systemctl is-active w3p-ups &>/dev/null; then
+        systemctl restart w3p-ups
+    fi
+}
+
+system_ups_configure() {
+    local CONFIG_FILE="/etc/w3p-ups/config.toml"
+
+    if [ ! -f "$CONFIG_FILE" ]; then
+        msg_box "Not Installed" "Configuration file not found.\n\nPlease install Web3-Pi-UPS-Service first."
+        return
+    fi
+
+    while true; do
+        # Read current values from config
+        local CURRENT_PORT=$(system_ups_toml_get "$CONFIG_FILE" "serial" "port")
+        local CURRENT_BAUD=$(system_ups_toml_get "$CONFIG_FILE" "serial" "baud_rate")
+        local CURRENT_SHUTDOWN=$(system_ups_toml_get "$CONFIG_FILE" "battery" "shutdown_threshold")
+        local CURRENT_MIN_V=$(system_ups_toml_get "$CONFIG_FILE" "battery" "min_valid_voltage")
+        local CURRENT_MAX_V=$(system_ups_toml_get "$CONFIG_FILE" "battery" "max_valid_voltage")
+        local CURRENT_MARGIN=$(system_ups_toml_get "$CONFIG_FILE" "battery" "shutdown_cancel_margin")
+        local CURRENT_DELAY=$(system_ups_toml_get "$CONFIG_FILE" "shutdown" "delay_seconds")
+        local CURRENT_LOG=$(system_ups_toml_get "$CONFIG_FILE" "logging" "level")
+
+        CHOICE=$(whiptail --title "UPS Configuration" \
+            --menu "Port: $CURRENT_PORT | Shutdown: ${CURRENT_SHUTDOWN}%" \
+            $TERM_HEIGHT $TERM_WIDTH 12 \
+            "1" "Serial Port ($CURRENT_PORT)" \
+            "2" "Baud Rate ($CURRENT_BAUD)" \
+            "3" "Shutdown Threshold ($CURRENT_SHUTDOWN%)" \
+            "4" "Shutdown Cancel Margin ($CURRENT_MARGIN%)" \
+            "5" "Min Valid Voltage ($CURRENT_MIN_V mV)" \
+            "6" "Max Valid Voltage ($CURRENT_MAX_V mV)" \
+            "7" "Shutdown Delay ($CURRENT_DELAY sec)" \
+            "8" "Log Level ($CURRENT_LOG)" \
+            "9" "Edit Shutdown Script" \
+            "A" "Edit Config File (nano)" \
+            "0" "Back" \
+            3>&1 1>&2 2>&3)
+
+        case $CHOICE in
+            1) system_ups_config_serial_port ;;
+            2) system_ups_config_baud_rate ;;
+            3) system_ups_config_shutdown_threshold ;;
+            4) system_ups_config_shutdown_margin ;;
+            5) system_ups_config_min_voltage ;;
+            6) system_ups_config_max_voltage ;;
+            7) system_ups_config_shutdown_delay ;;
+            8) system_ups_config_log_level ;;
+            9) system_ups_config_shutdown_script ;;
+            A) system_ups_config_edit_raw ;;
+            0|"") return ;;
+        esac
+    done
+}
+
+system_ups_config_serial_port() {
+    local CONFIG_FILE="/etc/w3p-ups/config.toml"
+    local CURRENT=$(system_ups_toml_get "$CONFIG_FILE" "serial" "port")
+
+    NEW_VALUE=$(input_box "Serial Port" "Enter serial port for UPS communication:\n\nCommon values:\n  /dev/ttyACM0 (USB CDC)\n  /dev/ttyUSB0 (USB serial)" "$CURRENT")
+
+    if [ -n "$NEW_VALUE" ] && [ "$NEW_VALUE" != "$CURRENT" ]; then
+        system_ups_toml_set "$CONFIG_FILE" "serial" "port" "$NEW_VALUE" "true"
+        msg_box "Success" "Serial port set to: $NEW_VALUE\n\nService will restart if running."
+    fi
+}
+
+system_ups_config_baud_rate() {
+    local CONFIG_FILE="/etc/w3p-ups/config.toml"
+    local CURRENT=$(system_ups_toml_get "$CONFIG_FILE" "serial" "baud_rate")
+
+    NEW_VALUE=$(whiptail --title "Baud Rate" \
+        --menu "Current: $CURRENT\n\nSelect baud rate:" 18 $TERM_WIDTH 6 \
+        "9600" "9600 baud" \
+        "19200" "19200 baud" \
+        "38400" "38400 baud" \
+        "57600" "57600 baud" \
+        "115200" "115200 baud (default)" \
+        "230400" "230400 baud" \
+        3>&1 1>&2 2>&3)
+
+    if [ -n "$NEW_VALUE" ] && [ "$NEW_VALUE" != "$CURRENT" ]; then
+        system_ups_toml_set "$CONFIG_FILE" "serial" "baud_rate" "$NEW_VALUE" "false"
+        msg_box "Success" "Baud rate set to: $NEW_VALUE"
+    fi
+}
+
+system_ups_config_shutdown_threshold() {
+    local CONFIG_FILE="/etc/w3p-ups/config.toml"
+    local CURRENT=$(system_ups_toml_get "$CONFIG_FILE" "battery" "shutdown_threshold")
+
+    NEW_VALUE=$(input_box "Shutdown Threshold" "Enter battery percentage to trigger shutdown (0-100):\n\nWhen battery drops below this level, system will initiate safe shutdown.\n\nRecommended: 10-20%" "$CURRENT")
+
+    if [ -n "$NEW_VALUE" ]; then
+        # Validate numeric input 0-100
+        if [[ "$NEW_VALUE" =~ ^[0-9]+$ ]] && [ "$NEW_VALUE" -ge 0 ] && [ "$NEW_VALUE" -le 100 ]; then
+            if [ "$NEW_VALUE" != "$CURRENT" ]; then
+                system_ups_toml_set "$CONFIG_FILE" "battery" "shutdown_threshold" "$NEW_VALUE" "false"
+                msg_box "Success" "Shutdown threshold set to: ${NEW_VALUE}%"
+            fi
+        else
+            msg_box "Error" "Invalid value. Enter a number between 0 and 100."
+        fi
+    fi
+}
+
+system_ups_config_shutdown_margin() {
+    local CONFIG_FILE="/etc/w3p-ups/config.toml"
+    local CURRENT=$(system_ups_toml_get "$CONFIG_FILE" "battery" "shutdown_cancel_margin")
+
+    NEW_VALUE=$(input_box "Shutdown Cancel Margin" "Enter margin to cancel pending shutdown (0-50%):\n\nIf battery rises above (threshold + margin), shutdown is cancelled.\n\nExample: threshold=10, margin=5 -> cancel at 15%\n\nDefault: 5%" "$CURRENT")
+
+    if [ -n "$NEW_VALUE" ]; then
+        if [[ "$NEW_VALUE" =~ ^[0-9]+$ ]] && [ "$NEW_VALUE" -ge 0 ] && [ "$NEW_VALUE" -le 50 ]; then
+            if [ "$NEW_VALUE" != "$CURRENT" ]; then
+                system_ups_toml_set "$CONFIG_FILE" "battery" "shutdown_cancel_margin" "$NEW_VALUE" "false"
+                msg_box "Success" "Shutdown cancel margin set to: ${NEW_VALUE}%"
+            fi
+        else
+            msg_box "Error" "Invalid value. Enter a number between 0 and 50."
+        fi
+    fi
+}
+
+system_ups_config_min_voltage() {
+    local CONFIG_FILE="/etc/w3p-ups/config.toml"
+    local CURRENT=$(system_ups_toml_get "$CONFIG_FILE" "battery" "min_valid_voltage")
+
+    NEW_VALUE=$(input_box "Minimum Valid Voltage" "Enter minimum valid voltage in millivolts:\n\nVoltage readings below this value are ignored as invalid.\n\nDefault: 8000 (8V)" "$CURRENT")
+
+    if [ -n "$NEW_VALUE" ]; then
+        if [[ "$NEW_VALUE" =~ ^[0-9]+$ ]]; then
+            if [ "$NEW_VALUE" != "$CURRENT" ]; then
+                system_ups_toml_set "$CONFIG_FILE" "battery" "min_valid_voltage" "$NEW_VALUE" "false"
+                msg_box "Success" "Minimum valid voltage set to: ${NEW_VALUE} mV"
+            fi
+        else
+            msg_box "Error" "Invalid value. Enter a positive number."
+        fi
+    fi
+}
+
+system_ups_config_max_voltage() {
+    local CONFIG_FILE="/etc/w3p-ups/config.toml"
+    local CURRENT=$(system_ups_toml_get "$CONFIG_FILE" "battery" "max_valid_voltage")
+
+    NEW_VALUE=$(input_box "Maximum Valid Voltage" "Enter maximum valid voltage in millivolts:\n\nVoltage readings above this value are ignored as invalid.\n\nDefault: 26000 (26V)" "$CURRENT")
+
+    if [ -n "$NEW_VALUE" ]; then
+        if [[ "$NEW_VALUE" =~ ^[0-9]+$ ]]; then
+            if [ "$NEW_VALUE" != "$CURRENT" ]; then
+                system_ups_toml_set "$CONFIG_FILE" "battery" "max_valid_voltage" "$NEW_VALUE" "false"
+                msg_box "Success" "Maximum valid voltage set to: ${NEW_VALUE} mV"
+            fi
+        else
+            msg_box "Error" "Invalid value. Enter a positive number."
+        fi
+    fi
+}
+
+system_ups_config_shutdown_delay() {
+    local CONFIG_FILE="/etc/w3p-ups/config.toml"
+    local CURRENT=$(system_ups_toml_get "$CONFIG_FILE" "shutdown" "delay_seconds")
+
+    NEW_VALUE=$(input_box "Shutdown Delay" "Enter delay before shutdown in seconds:\n\nAfter battery drops below threshold, system waits this long before shutdown.\n\nDefault: 30 seconds" "$CURRENT")
+
+    if [ -n "$NEW_VALUE" ]; then
+        if [[ "$NEW_VALUE" =~ ^[0-9]+$ ]] && [ "$NEW_VALUE" -ge 0 ]; then
+            if [ "$NEW_VALUE" != "$CURRENT" ]; then
+                system_ups_toml_set "$CONFIG_FILE" "shutdown" "delay_seconds" "$NEW_VALUE" "false"
+                msg_box "Success" "Shutdown delay set to: ${NEW_VALUE} seconds"
+            fi
+        else
+            msg_box "Error" "Invalid value. Enter a non-negative number."
+        fi
+    fi
+}
+
+system_ups_config_log_level() {
+    local CONFIG_FILE="/etc/w3p-ups/config.toml"
+    local CURRENT=$(system_ups_toml_get "$CONFIG_FILE" "logging" "level")
+
+    NEW_VALUE=$(whiptail --title "Log Level" \
+        --menu "Current: $CURRENT\n\nSelect logging level:" 16 $TERM_WIDTH 5 \
+        "error" "Errors only" \
+        "warn" "Warnings and errors" \
+        "info" "Info, warnings, and errors (default)" \
+        "debug" "Debug (verbose)" \
+        "trace" "Trace (very verbose)" \
+        3>&1 1>&2 2>&3)
+
+    if [ -n "$NEW_VALUE" ] && [ "$NEW_VALUE" != "$CURRENT" ]; then
+        system_ups_toml_set "$CONFIG_FILE" "logging" "level" "$NEW_VALUE" "true"
+        msg_box "Success" "Log level set to: $NEW_VALUE"
+    fi
+}
+
+system_ups_config_shutdown_script() {
+    local SCRIPT_FILE="/etc/w3p-ups/shutdown.sh"
+
+    if [ ! -f "$SCRIPT_FILE" ]; then
+        msg_box "Not Found" "Shutdown script not found:\n$SCRIPT_FILE\n\nPlease install Web3-Pi-UPS-Service first."
+        return
+    fi
+
+    if yesno_box "Edit Shutdown Script" "Edit the shutdown script?\n\nThis script is executed when battery reaches shutdown threshold.\n\nFile: $SCRIPT_FILE\n\nEditor: nano (Ctrl+X to exit)"; then
+        clear
+        nano "$SCRIPT_FILE"
+    fi
+}
+
+system_ups_config_edit_raw() {
+    local CONFIG_FILE="/etc/w3p-ups/config.toml"
+
+    if [ ! -f "$CONFIG_FILE" ]; then
+        msg_box "Not Found" "Configuration file not found:\n$CONFIG_FILE"
+        return
+    fi
+
+    if yesno_box "Edit Configuration" "Edit the raw configuration file?\n\nFile: $CONFIG_FILE\n\nEditor: nano (Ctrl+X to exit)\n\nService will restart after editing."; then
+        clear
+        nano "$CONFIG_FILE"
+
+        # Restart service if running
+        if systemctl is-active w3p-ups &>/dev/null; then
+            systemctl restart w3p-ups
+            msg_box "Service Restarted" "Configuration saved and service restarted."
+        fi
+    fi
+}
+
+system_ups_status() {
+    if [ ! -f /usr/local/bin/w3p-ups ]; then
+        msg_box "Not Installed" "Web3-Pi-UPS-Service is not installed."
+        return
+    fi
+
+    local CONFIG_FILE="/etc/w3p-ups/config.toml"
+
+    INFO="===============================================================\n"
+    INFO+="                    UPS STATUS\n"
+    INFO+="===============================================================\n\n"
+
+    # Service status
+    INFO+="  SERVICE STATUS\n"
+    INFO+="---------------------------------------------------------------\n"
+
+    local SERVICE_STATUS=$(systemctl is-active w3p-ups 2>/dev/null || echo "inactive")
+    local ENABLED_STATUS=$(systemctl is-enabled w3p-ups 2>/dev/null || echo "disabled")
+
+    if [ "$SERVICE_STATUS" = "active" ]; then
+        INFO+="  Service: Running\n"
+    else
+        INFO+="  Service: $SERVICE_STATUS\n"
+    fi
+    INFO+="  Boot:    $ENABLED_STATUS\n"
+
+    # Configuration
+    if [ -f "$CONFIG_FILE" ]; then
+        INFO+="\n  CONFIGURATION\n"
+        INFO+="---------------------------------------------------------------\n"
+        INFO+="  Serial Port:      $(system_ups_toml_get "$CONFIG_FILE" "serial" "port")\n"
+        INFO+="  Baud Rate:        $(system_ups_toml_get "$CONFIG_FILE" "serial" "baud_rate")\n"
+        INFO+="  Shutdown at:      $(system_ups_toml_get "$CONFIG_FILE" "battery" "shutdown_threshold")%\n"
+        INFO+="  Cancel margin:    $(system_ups_toml_get "$CONFIG_FILE" "battery" "shutdown_cancel_margin")%\n"
+        INFO+="  Shutdown delay:   $(system_ups_toml_get "$CONFIG_FILE" "shutdown" "delay_seconds") sec\n"
+        INFO+="  Log level:        $(system_ups_toml_get "$CONFIG_FILE" "logging" "level")\n"
+    fi
+
+    # Check serial port
+    local PORT=$(system_ups_toml_get "$CONFIG_FILE" "serial" "port")
+    INFO+="\n  HARDWARE\n"
+    INFO+="---------------------------------------------------------------\n"
+    if [ -e "$PORT" ]; then
+        INFO+="  Serial port:      $PORT (available)\n"
+    else
+        INFO+="  Serial port:      $PORT (NOT FOUND)\n"
+    fi
+
+    # Recent logs (last 8 lines)
+    INFO+="\n  RECENT LOGS\n"
+    INFO+="---------------------------------------------------------------\n"
+    local LOGS=$(journalctl -u w3p-ups -n 8 --no-pager 2>/dev/null | tail -8)
+    if [ -n "$LOGS" ]; then
+        INFO+="$LOGS\n"
+    else
+        INFO+="  No logs available\n"
+    fi
+
+    whiptail --title "UPS Status" --scrolltext --msgbox "$INFO" 28 $TERM_WIDTH
+}
+
+system_ups_logs() {
+    if [ ! -f /usr/local/bin/w3p-ups ]; then
+        msg_box "Not Installed" "Web3-Pi-UPS-Service is not installed."
+        return
+    fi
+
+    CHOICE=$(whiptail --title "UPS Logs" \
+        --menu "View UPS service logs:" $TERM_HEIGHT $TERM_WIDTH 6 \
+        "1" "Last 50 lines" \
+        "2" "Last 100 lines" \
+        "3" "Last 200 lines" \
+        "4" "Follow logs (live)" \
+        "0" "Back" \
+        3>&1 1>&2 2>&3)
+
+    case $CHOICE in
+        1) clear; journalctl -u w3p-ups -n 50 --no-pager; read -p "Press Enter to continue..." ;;
+        2) clear; journalctl -u w3p-ups -n 100 --no-pager; read -p "Press Enter to continue..." ;;
+        3) clear; journalctl -u w3p-ups -n 200 --no-pager; read -p "Press Enter to continue..." ;;
+        4)
+            clear
+            echo "Following UPS logs (Ctrl+C to exit)..."
+            echo ""
+            journalctl -u w3p-ups -f
+            ;;
+    esac
+}
+
+system_ups_about() {
+    INFO="===============================================================\n"
+    INFO+="               WEB3-PI-UPS-SERVICE\n"
+    INFO+="===============================================================\n\n"
+    INFO+="A battery monitoring and safe shutdown service for Raspberry Pi\n"
+    INFO+="with UPS (Uninterruptible Power Supply) hardware.\n\n"
+    INFO+="Features:\n"
+    INFO+="  - Real-time battery voltage monitoring\n"
+    INFO+="  - Automatic safe shutdown on low battery\n"
+    INFO+="  - Configurable shutdown thresholds\n"
+    INFO+="  - Customizable shutdown script\n"
+    INFO+="  - Protection for Ethereum validator keys\n\n"
+    INFO+="Configuration:\n"
+    INFO+="  - Config file: /etc/w3p-ups/config.toml\n"
+    INFO+="  - Shutdown script: /etc/w3p-ups/shutdown.sh\n"
+    INFO+="  - Service: w3p-ups.service\n\n"
+    INFO+="Source: github.com/Web3-Pi/Web3-Pi-UPS-Service\n"
+
+    msg_box "About Web3-Pi-UPS-Service" "$INFO"
 }
