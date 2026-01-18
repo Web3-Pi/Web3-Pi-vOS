@@ -1,8 +1,8 @@
 # Web3 Pi Staking
 
-> **WARNING: EARLY DEVELOPMENT STAGE**
+> **WARNING: DEVELOPMENT STAGE**
 >
-> This project is in early development. Do NOT use in production environments.
+> This project is in development.
 > Use at your own risk. Always test on testnets (hoodi) before considering mainnet.
 
 Ethereum staking OS image for Raspberry Pi 5, based on Armbian.
