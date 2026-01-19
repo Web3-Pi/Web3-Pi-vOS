@@ -9,16 +9,16 @@ Web3-Pi-vOS is a security-hardened operating system for Solo Ethereum Staking on
 
 ## Hardware Requirements
 
-- Raspberry Pi 5 (16GB RAM recommended)
-- NVMe m.2 2TB
+- Raspberry Pi 5 (16GB RAM)
+- Active cooling
+- Fast NVMe m.2 2TB
 - Official power supply (5.1V 5A)
 - Optional: Web3 Pi UPS for power protection
-- Active cooling
 
 ## Network Requirements
 
-- Ethernet connection (WiFi not recommended for staking)
-- Static IP or DHCP reservation recommended
+- Ethernet connection (WiFi or LTE not recommended for staking)
+- DHCP
 - **Router port forwarding:** Open ports **30303** and **9000** (TCP/UDP) to maximize peer connections
 
 ## Architecture Overview
