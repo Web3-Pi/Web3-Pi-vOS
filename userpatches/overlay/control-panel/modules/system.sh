@@ -1377,8 +1377,11 @@ system_auto_oc_run() {
     local SCAN_START_MHZ=$((SCAN_START / 1000))
     local SCAN_END_MHZ=$((SCAN_END / 1000))
 
+    local NUM_STEPS_DLG=$(( (SCAN_END - SCAN_START) / 100000 + 1 ))
+    local EST_MIN_DLG=$(( NUM_STEPS_DLG * 3 + 5 ))
+
     if ! yesno_box "Run Auto OC Detection" \
-        "This will test CPU frequencies from ${SCAN_START_MHZ} to ${SCAN_END_MHZ} MHz\nusing NEON/SIMD-focused stress tests (3 min per step),\nfollowed by a 5-minute confirmation at the max stable freq.\n\nChange range in Settings before running.\n\nREQUIREMENTS:\n- Active cooling MUST be working\n- Official 5.1V 5A power supply\n- No heavy workloads running\n\nThe system remains safe at all times.\n\nProceed?"; then
+        "This will test CPU frequencies from ${SCAN_START_MHZ} to ${SCAN_END_MHZ} MHz\n(${NUM_STEPS_DLG} steps, ~${EST_MIN_DLG} min total)\nusing NEON/SIMD stress tests (3 min per step),\nfollowed by a 5-minute confirmation at the max stable freq.\n\nChange range in Settings before running.\n\nREQUIREMENTS:\n- Active cooling MUST be working\n- Official 5.1V 5A power supply\n- No heavy workloads running\n\nThe system remains safe at all times.\n\nProceed?"; then
         return
     fi
 
@@ -1398,13 +1401,16 @@ system_auto_oc_run() {
         fi
     fi
 
+    local NUM_STEPS=$(( (SCAN_END - SCAN_START) / 100000 + 1 ))
+    local EST_MINUTES=$(( NUM_STEPS * 3 + 5 ))
+
     clear
     echo "==============================================================="
     echo "         AUTO OVERCLOCK DETECTION"
     echo "==============================================================="
     echo ""
     echo "Testing frequencies: ${SCAN_START_MHZ} - ${SCAN_END_MHZ} MHz (NEON stress, 3 min/step)"
-    echo "Followed by 5-minute confirmation test at detected max"
+    echo "Steps: ${NUM_STEPS}, estimated time: ~${EST_MINUTES} min (incl. 5 min confirmation)"
     echo ""
     echo "Press Ctrl+C to abort safely (frequency will be restored)"
     echo ""

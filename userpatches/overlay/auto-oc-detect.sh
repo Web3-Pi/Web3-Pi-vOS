@@ -16,9 +16,7 @@ set -euo pipefail
 # =============================================================================
 START_FREQ=2400000       # Start from 2400 MHz (stock Pi5)
 END_FREQ=3200000         # Maximum to try (must match config.txt arm_freq)
-STEP_SIZE=100000         # 100 MHz steps (below FINE_STEP_FROM)
-FINE_STEP_SIZE=50000     # 50 MHz steps (at and above FINE_STEP_FROM)
-FINE_STEP_FROM=2800000   # Switch to fine steps from 2800 MHz
+STEP_SIZE=100000         # 100 MHz steps
 STRESS_DURATION=180      # Seconds of stress per step (3 minutes)
 CONFIRM_DURATION=300     # Seconds for final confirmation test (5 minutes)
 MAX_TEMP=85              # Celsius - abort step if exceeded
@@ -310,7 +308,7 @@ log "============================================================"
 log "  Web3 Pi - Auto Overclock Detection"
 log "============================================================"
 log "  Range:     ${START_FREQ} - ${END_FREQ} kHz"
-log "  Step:      ${STEP_SIZE}/${FINE_STEP_SIZE} kHz (switch at ${FINE_STEP_FROM})"
+log "  Step:      ${STEP_SIZE} kHz"
 log "  Stress:    ${STRESS_DURATION}s per step (NEON/SIMD)"
 log "  Confirm:   ${CONFIRM_DURATION}s at detected max"
 log "  Max temp:  ${MAX_TEMP}C"
@@ -321,7 +319,7 @@ log "============================================================"
 
 echo ""
 echo "  Range:     $((START_FREQ / 1000)) - $((END_FREQ / 1000)) MHz"
-echo "  Step:      $((STEP_SIZE / 1000)) MHz (below $((FINE_STEP_FROM / 1000))), $((FINE_STEP_SIZE / 1000)) MHz (above)"
+echo "  Step:      $((STEP_SIZE / 1000)) MHz"
 echo "  Stress:    ${STRESS_DURATION}s per step (NEON/SIMD)"
 echo "  Confirm:   ${CONFIRM_DURATION}s at detected max"
 echo "  Max temp:  ${MAX_TEMP}C"
@@ -332,11 +330,7 @@ FREQ_LIST=()
 f=$START_FREQ
 while [ "$f" -le "$END_FREQ" ]; do
     FREQ_LIST+=("$f")
-    if [ "$f" -ge "$FINE_STEP_FROM" ]; then
-        f=$((f + FINE_STEP_SIZE))
-    else
-        f=$((f + STEP_SIZE))
-    fi
+    f=$((f + STEP_SIZE))
 done
 TOTAL_STEPS=${#FREQ_LIST[@]}
 
@@ -373,6 +367,14 @@ for CURRENT_FREQ in "${FREQ_LIST[@]}"; do
     # Verify frequency was set
     ACTUAL_FREQ=$(cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_cur_freq 2>/dev/null || echo "0")
     log "Requested: ${FREQ_MHZ} MHz, Actual: $((ACTUAL_FREQ / 1000)) MHz"
+
+    # Skip if the CPU doesn't support this exact frequency
+    # (Pi 5 uses discrete frequency steps; the kernel rounds to the nearest valid one)
+    if [ "$((ACTUAL_FREQ / 1000))" -ne "$FREQ_MHZ" ]; then
+        log "SKIP: ${FREQ_MHZ} MHz not a valid CPU frequency (actual: $((ACTUAL_FREQ / 1000)) MHz)"
+        echo "  SKIP: ${FREQ_MHZ} MHz not available (nearest: $((ACTUAL_FREQ / 1000)) MHz)"
+        continue
+    fi
 
     # Check pre-stress state
     PRE_THROTTLE=$(get_throttle_status)
@@ -437,6 +439,15 @@ if [ "$LAST_STABLE_FREQ" -gt 0 ]; then
         set_all_cpus "$CONFIRM_FREQ" "performance"
         sleep 2
 
+        # Verify frequency was actually applied
+        ACTUAL_CONFIRM=$(cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_cur_freq 2>/dev/null || echo "0")
+        if [ "$((ACTUAL_CONFIRM / 1000))" -ne "$CONFIRM_MHZ" ]; then
+            log "SKIP confirmation: ${CONFIRM_MHZ} MHz not valid (actual: $((ACTUAL_CONFIRM / 1000)) MHz), stepping down"
+            echo "  SKIP: ${CONFIRM_MHZ} MHz not available, stepping down..."
+            CONFIRM_FREQ=$((CONFIRM_FREQ - STEP_SIZE))
+            continue
+        fi
+
         if run_stress_test "$CONFIRM_DURATION" "${CONFIRM_MHZ} MHz" "confirmation"; then
             log "CONFIRMATION PASSED: ${CONFIRM_MHZ} MHz is stable for ${CONFIRM_DURATION}s"
             echo "  CONFIRMED: ${CONFIRM_MHZ} MHz stable for ${CONFIRM_DURATION}s"
@@ -449,12 +460,7 @@ if [ "$LAST_STABLE_FREQ" -gt 0 ]; then
             log "CONFIRMATION FAILED at ${CONFIRM_MHZ} MHz, stepping down..."
             echo "  Confirmation FAILED at ${CONFIRM_MHZ} MHz, trying lower..."
 
-            # Step down by the appropriate increment
-            if [ "$CONFIRM_FREQ" -ge "$FINE_STEP_FROM" ]; then
-                CONFIRM_FREQ=$((CONFIRM_FREQ - FINE_STEP_SIZE))
-            else
-                CONFIRM_FREQ=$((CONFIRM_FREQ - STEP_SIZE))
-            fi
+            CONFIRM_FREQ=$((CONFIRM_FREQ - STEP_SIZE))
         fi
     done
 
@@ -496,8 +502,6 @@ OC_DETECTED_MAX_FREQ=$LAST_STABLE_FREQ
 OC_DETECT_START=$START_FREQ
 OC_DETECT_END=$END_FREQ
 OC_DETECT_STEP=$STEP_SIZE
-OC_DETECT_FINE_STEP=$FINE_STEP_SIZE
-OC_DETECT_FINE_FROM=$FINE_STEP_FROM
 OC_DETECT_STRESS_DURATION=$STRESS_DURATION
 OC_DETECT_CONFIRM_DURATION=$CONFIRM_DURATION
 OC_DETECT_CONFIRM_PASSED=$CONFIRM_PASSED
