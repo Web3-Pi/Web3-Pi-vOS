@@ -250,6 +250,14 @@ chmod +x /opt/web3pi/auto-oc-detect.sh
 cp /tmp/overlay/oc-config /opt/web3pi/oc-config
 #--------------------------------------------------------------------------------------------
 
+## Hardware Watchdog ###################################################################
+# systemd watchdog configuration - auto-reboot on system hang
+# Hardware watchdog enabled via dtparam=watchdog=on in config.txt
+# systemd pings /dev/watchdog; if it stops (kernel panic, deadlock), hardware resets
+mkdir -p /etc/systemd/system.conf.d
+cp /tmp/overlay/etc/systemd/system.conf.d/watchdog.conf /etc/systemd/system.conf.d/watchdog.conf
+#--------------------------------------------------------------------------------------------
+
 ## Trusted node sync script #################################################################
 # Script for fast initial sync using checkpoint sync servers
 cp /tmp/overlay/trusted-node-sync.sh /opt/web3pi/trusted-node-sync.sh
