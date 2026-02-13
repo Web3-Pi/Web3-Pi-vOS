@@ -1283,7 +1283,7 @@ system_auto_oc_run() {
     fi
 
     if ! yesno_box "Run Auto OC Detection" \
-        "This will test CPU frequencies from 2400 to 3200 MHz\nin 100 MHz steps, stressing each for 60 seconds.\n\nEstimated time: 10-15 minutes\n\nREQUIREMENTS:\n- Active cooling MUST be working\n- Official 5.1V 5A power supply\n- No heavy workloads running\n\nThe system remains safe at all times.\n\nProceed?"; then
+        "This will test CPU frequencies from 2400 to 3200 MHz\nusing NEON/SIMD-focused stress tests (3 min per step),\nfollowed by a 5-minute confirmation at the max stable freq.\n\nEstimated time: 50-60 minutes\n\nREQUIREMENTS:\n- Active cooling MUST be working\n- Official 5.1V 5A power supply\n- No heavy workloads running\n\nThe system remains safe at all times.\n\nProceed?"; then
         return
     fi
 
@@ -1308,8 +1308,9 @@ system_auto_oc_run() {
     echo "         AUTO OVERCLOCK DETECTION"
     echo "==============================================================="
     echo ""
-    echo "Testing frequencies: 2400 - 3200 MHz (100 MHz steps)"
-    echo "Estimated time: 10-15 minutes"
+    echo "Testing frequencies: 2400 - 3200 MHz (NEON stress, 3 min/step)"
+    echo "Followed by 5-minute confirmation test at detected max"
+    echo "Estimated time: 50-60 minutes"
     echo ""
     echo "Press Ctrl+C to abort safely (frequency will be restored)"
     echo ""
@@ -1353,6 +1354,8 @@ system_auto_oc_results() {
     INFO+="  Range:        $((${OC_DETECT_START:-0} / 1000)) - $((${OC_DETECT_END:-0} / 1000)) MHz\n"
     INFO+="  Step size:    $((${OC_DETECT_STEP:-0} / 1000)) MHz\n"
     INFO+="  Stress time:  ${OC_DETECT_STRESS_DURATION:-N/A} sec/step\n"
+    INFO+="  Confirm time: ${OC_DETECT_CONFIRM_DURATION:-N/A} sec\n"
+    INFO+="  Confirmed:    $([ "${OC_DETECT_CONFIRM_PASSED:-false}" = "true" ] && echo "YES" || echo "NO")\n"
     INFO+="  Max temp:     ${OC_DETECT_MAX_TEMP:-N/A}C\n"
     INFO+="  HW ceiling:   $((${OC_DETECT_HW_MAX:-0} / 1000)) MHz\n"
     INFO+="  Run date:     ${OC_DETECT_DATE:-N/A}\n"
@@ -1421,16 +1424,18 @@ system_auto_oc_about() {
     INFO+="How it works:\n"
     INFO+="  1. config.txt sets a high HW ceiling (3200 MHz)\n"
     INFO+="  2. cpu-freq-safe.service clamps to safe freq at boot\n"
-    INFO+="  3. Detection raises freq in 100 MHz steps\n"
-    INFO+="  4. Each step: 60s stress test + throttle monitoring\n"
+    INFO+="  3. Detection raises freq in 100/50 MHz steps\n"
+    INFO+="  4. Each step: 3-min NEON/SIMD stress + throttle check\n"
     INFO+="  5. If stable: move to next step\n"
-    INFO+="  6. If unstable: previous step is the max\n"
-    INFO+="  7. Result saved and applied on next reboot\n\n"
+    INFO+="  6. If unstable: previous step is the max candidate\n"
+    INFO+="  7. 5-min confirmation test at detected max\n"
+    INFO+="  8. If confirmation fails: step down and retry\n"
+    INFO+="  9. Result saved and applied on next reboot\n\n"
     INFO+="Safety:\n"
     INFO+="  - System always boots at safe frequency\n"
     INFO+="  - Detection can be interrupted safely (Ctrl+C)\n"
     INFO+="  - Frequency restored on any exit/error\n"
-    INFO+="  - Temperature limit enforced (80C)\n"
+    INFO+="  - Temperature limit enforced (85C)\n"
     INFO+="  - Under-voltage detection\n\n"
     INFO+="Requirements:\n"
     INFO+="  - Active cooling (fan) must be working\n"

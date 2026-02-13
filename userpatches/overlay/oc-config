@@ -9,3 +9,5 @@ OC_DETECTED_MAX_FREQ=0
 
 # Detection metadata (populated after running auto-oc-detect.sh)
 OC_DETECT_DATE=""
+OC_DETECT_CONFIRM_DURATION=""
+OC_DETECT_CONFIRM_PASSED=""

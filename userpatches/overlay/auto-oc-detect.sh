@@ -19,7 +19,8 @@ END_FREQ=3200000         # Maximum to try (must match config.txt arm_freq)
 STEP_SIZE=100000         # 100 MHz steps (below FINE_STEP_FROM)
 FINE_STEP_SIZE=50000     # 50 MHz steps (at and above FINE_STEP_FROM)
 FINE_STEP_FROM=2800000   # Switch to fine steps from 2800 MHz
-STRESS_DURATION=60       # Seconds of stress per step
+STRESS_DURATION=180      # Seconds of stress per step (3 minutes)
+CONFIRM_DURATION=300     # Seconds for final confirmation test (5 minutes)
 MAX_TEMP=85              # Celsius - abort step if exceeded
 COOLDOWN_TEMP=55         # Wait until CPU cools to this before next step
 COOLDOWN_TIMEOUT=120     # Max seconds to wait for cooldown
@@ -37,14 +38,16 @@ while [[ $# -gt 0 ]]; do
         --end)      END_FREQ="$2"; shift 2 ;;
         --step)     STEP_SIZE="$2"; shift 2 ;;
         --duration) STRESS_DURATION="$2"; shift 2 ;;
+        --confirm-duration) CONFIRM_DURATION="$2"; shift 2 ;;
         --max-temp) MAX_TEMP="$2"; shift 2 ;;
         -h|--help)
             echo "Usage: auto-oc-detect.sh [OPTIONS]"
-            echo "  --start FREQ_KHZ    Start frequency (default: 2400000)"
-            echo "  --end FREQ_KHZ      End frequency (default: 3000000)"
-            echo "  --step STEP_KHZ     Step size (default: 100000)"
-            echo "  --duration SECS     Stress duration per step (default: 60)"
-            echo "  --max-temp CELSIUS  Max temperature limit (default: 80)"
+            echo "  --start FREQ_KHZ         Start frequency (default: 2400000)"
+            echo "  --end FREQ_KHZ           End frequency (default: 3200000)"
+            echo "  --step STEP_KHZ          Step size (default: 100000)"
+            echo "  --duration SECS          Stress duration per step (default: 180)"
+            echo "  --confirm-duration SECS  Confirmation test duration (default: 300)"
+            echo "  --max-temp CELSIUS       Max temperature limit (default: 85)"
             exit 0
             ;;
         *)          echo "Unknown option: $1"; exit 1 ;;
@@ -66,6 +69,12 @@ fi
 
 if ! command -v vcgencmd &>/dev/null; then
     echo "ERROR: vcgencmd not found (Raspberry Pi required)"
+    exit 1
+fi
+
+# Verify NEON/SIMD stressors are available in this stress-ng version
+if ! stress-ng --matrix 0 --timeout 1s &>/dev/null; then
+    echo "ERROR: stress-ng does not support --matrix stressor (version too old?)"
     exit 1
 fi
 
@@ -195,6 +204,97 @@ wait_for_cooldown() {
 }
 
 # =============================================================================
+# Stress test function (NEON/SIMD focused)
+# =============================================================================
+# Run a stress test at the current CPU frequency and monitor for failures.
+# Arguments:
+#   $1 - duration in seconds
+#   $2 - frequency label (for logging, e.g., "2800 MHz")
+#   $3 - phase label (e.g., "detection" or "confirmation")
+# Returns 0 if stable, 1 if failed.
+run_stress_test() {
+    local duration="$1"
+    local freq_label="$2"
+    local phase_label="$3"
+
+    log "Running NEON stress test [${phase_label}] for ${duration}s at ${freq_label}..."
+
+    stress-ng --matrix "$NUM_CORES" --matrix-size 128 \
+              --vecmath "$NUM_CORES" \
+              --timeout "${duration}s" \
+              --metrics-brief 2>>"$OC_LOG" &
+    local stress_pid=$!
+
+    local elapsed=0
+    local stress_failed=false
+    while kill -0 "$stress_pid" 2>/dev/null; do
+        sleep 5
+        elapsed=$((elapsed + 5))
+
+        local current_temp
+        current_temp=$(get_cpu_temp)
+        local current_throttle
+        current_throttle=$(get_throttle_status)
+
+        # Periodic status
+        if [ $((elapsed % 15)) -eq 0 ]; then
+            local current_actual
+            current_actual=$(cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_cur_freq 2>/dev/null || echo "0")
+            log "  [${phase_label}][${elapsed}s] temp=${current_temp}C freq=$((current_actual/1000))MHz throttle=${current_throttle}"
+            echo "  [${elapsed}s/${duration}s] temp=${current_temp}C"
+        fi
+
+        # Temperature limit
+        if [ "$current_temp" -ge "$MAX_TEMP" ]; then
+            log "FAIL [${phase_label}]: Temperature ${current_temp}C exceeded limit ${MAX_TEMP}C"
+            echo "  FAIL: Temperature ${current_temp}C > ${MAX_TEMP}C limit"
+            kill "$stress_pid" 2>/dev/null || true
+            wait "$stress_pid" 2>/dev/null || true
+            stress_failed=true
+            break
+        fi
+
+        # Throttling
+        if is_throttled_now "$current_throttle"; then
+            log "FAIL [${phase_label}]: Throttling detected (${current_throttle}) at ${freq_label}"
+            echo "  FAIL: CPU throttling at ${freq_label}"
+            kill "$stress_pid" 2>/dev/null || true
+            wait "$stress_pid" 2>/dev/null || true
+            stress_failed=true
+            break
+        fi
+    done
+
+    # Wait for stress-ng to finish
+    wait "$stress_pid" 2>/dev/null
+    local stress_exit=$?
+
+    if [ "$stress_exit" -ne 0 ] && [ "$stress_failed" = false ]; then
+        log "FAIL [${phase_label}]: stress-ng exited with code ${stress_exit} at ${freq_label}"
+        echo "  FAIL: stress-ng error (exit code ${stress_exit})"
+        stress_failed=true
+    fi
+
+    # Post-stress checks
+    local post_throttle
+    post_throttle=$(get_throttle_status)
+    local post_temp
+    post_temp=$(get_cpu_temp)
+    log "Post-stress [${phase_label}]: temp=${post_temp}C, throttle=${post_throttle}"
+
+    if [ "$stress_failed" = false ] && has_throttle_history "$post_throttle"; then
+        log "FAIL [${phase_label}]: Historical throttling detected (${post_throttle}) at ${freq_label}"
+        echo "  FAIL: Throttling occurred during test"
+        stress_failed=true
+    fi
+
+    if [ "$stress_failed" = true ]; then
+        return 1
+    fi
+    return 0
+}
+
+# =============================================================================
 # Trap: always restore safe frequency on exit
 # =============================================================================
 trap restore_safe_freq EXIT
@@ -207,7 +307,8 @@ log "  Web3 Pi - Auto Overclock Detection"
 log "============================================================"
 log "  Range:     ${START_FREQ} - ${END_FREQ} kHz"
 log "  Step:      ${STEP_SIZE}/${FINE_STEP_SIZE} kHz (switch at ${FINE_STEP_FROM})"
-log "  Stress:    ${STRESS_DURATION}s per step"
+log "  Stress:    ${STRESS_DURATION}s per step (NEON/SIMD)"
+log "  Confirm:   ${CONFIRM_DURATION}s at detected max"
 log "  Max temp:  ${MAX_TEMP}C"
 log "  Cooldown:  ${COOLDOWN_TEMP}C"
 log "  CPU cores: ${NUM_CORES}"
@@ -217,7 +318,8 @@ log "============================================================"
 echo ""
 echo "  Range:     $((START_FREQ / 1000)) - $((END_FREQ / 1000)) MHz"
 echo "  Step:      $((STEP_SIZE / 1000)) MHz (below $((FINE_STEP_FROM / 1000))), $((FINE_STEP_SIZE / 1000)) MHz (above)"
-echo "  Stress:    ${STRESS_DURATION}s per step"
+echo "  Stress:    ${STRESS_DURATION}s per step (NEON/SIMD)"
+echo "  Confirm:   ${CONFIRM_DURATION}s at detected max"
 echo "  Max temp:  ${MAX_TEMP}C"
 echo ""
 
@@ -280,89 +382,76 @@ for CURRENT_FREQ in "${FREQ_LIST[@]}"; do
         echo "  WARNING: Under-voltage! Check power supply."
     fi
 
-    # Run stress test in background
-    log "Running stress-ng for ${STRESS_DURATION}s on ${NUM_CORES} cores..."
-    STRESS_FAILED=false
-
-    stress-ng --cpu "$NUM_CORES" --cpu-method all \
-              --timeout "${STRESS_DURATION}s" \
-              --metrics-brief 2>>"$OC_LOG" &
-    STRESS_PID=$!
-
-    # Monitor during stress
-    ELAPSED=0
-    while kill -0 "$STRESS_PID" 2>/dev/null; do
-        sleep 5
-        ELAPSED=$((ELAPSED + 5))
-
-        CURRENT_TEMP=$(get_cpu_temp)
-        CURRENT_THROTTLE=$(get_throttle_status)
-
-        # Periodic status
-        if [ $((ELAPSED % 15)) -eq 0 ]; then
-            CURRENT_ACTUAL=$(cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_cur_freq 2>/dev/null || echo "0")
-            log "  [${ELAPSED}s] temp=${CURRENT_TEMP}C freq=$((CURRENT_ACTUAL/1000))MHz throttle=${CURRENT_THROTTLE}"
-            echo "  [${ELAPSED}s/${STRESS_DURATION}s] temp=${CURRENT_TEMP}C"
-        fi
-
-        # Temperature limit
-        if [ "$CURRENT_TEMP" -ge "$MAX_TEMP" ]; then
-            log "FAIL: Temperature ${CURRENT_TEMP}C exceeded limit ${MAX_TEMP}C"
-            echo "  FAIL: Temperature ${CURRENT_TEMP}C > ${MAX_TEMP}C limit"
-            kill "$STRESS_PID" 2>/dev/null || true
-            wait "$STRESS_PID" 2>/dev/null || true
-            STRESS_FAILED=true
-            break
-        fi
-
-        # Throttling
-        if is_throttled_now "$CURRENT_THROTTLE"; then
-            log "FAIL: Throttling detected (${CURRENT_THROTTLE}) at ${FREQ_MHZ} MHz"
-            echo "  FAIL: CPU throttling at ${FREQ_MHZ} MHz"
-            kill "$STRESS_PID" 2>/dev/null || true
-            wait "$STRESS_PID" 2>/dev/null || true
-            STRESS_FAILED=true
-            break
-        fi
-    done
-
-    # Wait for stress-ng to finish if still running
-    if kill -0 "$STRESS_PID" 2>/dev/null; then
-        wait "$STRESS_PID" 2>/dev/null
-        STRESS_EXIT=$?
+    # Run NEON/SIMD stress test
+    if run_stress_test "$STRESS_DURATION" "${FREQ_MHZ} MHz" "detection"; then
+        LAST_STABLE_FREQ=$CURRENT_FREQ
+        log "RESULT: ${FREQ_MHZ} MHz is STABLE"
+        echo "  OK: ${FREQ_MHZ} MHz stable (temp: $(get_cpu_temp)C)"
     else
-        wait "$STRESS_PID" 2>/dev/null
-        STRESS_EXIT=$?
-    fi
-
-    if [ "$STRESS_EXIT" -ne 0 ] && [ "$STRESS_FAILED" = false ]; then
-        log "FAIL: stress-ng exited with code ${STRESS_EXIT} at ${FREQ_MHZ} MHz"
-        echo "  FAIL: stress-ng error (exit code ${STRESS_EXIT})"
-        STRESS_FAILED=true
-    fi
-
-    # Post-stress checks
-    POST_THROTTLE=$(get_throttle_status)
-    POST_TEMP=$(get_cpu_temp)
-    log "Post-stress: temp=${POST_TEMP}C, throttle=${POST_THROTTLE}"
-
-    # Check historical throttle bits
-    if [ "$STRESS_FAILED" = false ] && has_throttle_history "$POST_THROTTLE"; then
-        log "FAIL: Historical throttling detected (${POST_THROTTLE}) at ${FREQ_MHZ} MHz"
-        echo "  FAIL: Throttling occurred during test"
-        STRESS_FAILED=true
-    fi
-
-    if [ "$STRESS_FAILED" = true ]; then
         log "RESULT: ${FREQ_MHZ} MHz is NOT stable"
         break
     fi
-
-    # This frequency is stable
-    LAST_STABLE_FREQ=$CURRENT_FREQ
-    log "RESULT: ${FREQ_MHZ} MHz is STABLE"
-    echo "  OK: ${FREQ_MHZ} MHz stable (temp: ${POST_TEMP}C)"
 done
+
+# =============================================================================
+# Confirmation test phase
+# =============================================================================
+CONFIRM_PASSED=false
+
+if [ "$LAST_STABLE_FREQ" -gt 0 ]; then
+    log ""
+    log "============================================================"
+    log "  CONFIRMATION PHASE"
+    log "============================================================"
+
+    CONFIRM_FREQ=$LAST_STABLE_FREQ
+
+    while [ "$CONFIRM_FREQ" -ge "$START_FREQ" ]; do
+        CONFIRM_MHZ=$((CONFIRM_FREQ / 1000))
+
+        log ""
+        log "--- Confirmation test: ${CONFIRM_MHZ} MHz for ${CONFIRM_DURATION}s ---"
+        echo ""
+        echo "  CONFIRMATION: Testing ${CONFIRM_MHZ} MHz for ${CONFIRM_DURATION}s ($(( CONFIRM_DURATION / 60 )) minutes)..."
+
+        # Cooldown before confirmation
+        if ! wait_for_cooldown "$COOLDOWN_TEMP" "$COOLDOWN_TIMEOUT"; then
+            log "WARNING: Cooldown timeout before confirmation, proceeding anyway"
+        fi
+
+        # Clear throttle history
+        vcgencmd get_throttled > /dev/null 2>&1 || true
+        sleep 1
+
+        # Set frequency
+        set_all_cpus "$CONFIRM_FREQ" "performance"
+        sleep 2
+
+        if run_stress_test "$CONFIRM_DURATION" "${CONFIRM_MHZ} MHz" "confirmation"; then
+            log "CONFIRMATION PASSED: ${CONFIRM_MHZ} MHz is stable for ${CONFIRM_DURATION}s"
+            echo "  CONFIRMED: ${CONFIRM_MHZ} MHz stable for ${CONFIRM_DURATION}s"
+            LAST_STABLE_FREQ=$CONFIRM_FREQ
+            CONFIRM_PASSED=true
+            break
+        else
+            log "CONFIRMATION FAILED at ${CONFIRM_MHZ} MHz, stepping down..."
+            echo "  Confirmation FAILED at ${CONFIRM_MHZ} MHz, trying lower..."
+
+            # Step down by the appropriate increment
+            if [ "$CONFIRM_FREQ" -ge "$FINE_STEP_FROM" ]; then
+                CONFIRM_FREQ=$((CONFIRM_FREQ - FINE_STEP_SIZE))
+            else
+                CONFIRM_FREQ=$((CONFIRM_FREQ - STEP_SIZE))
+            fi
+        fi
+    done
+
+    if [ "$CONFIRM_PASSED" = false ]; then
+        log "WARNING: No frequency passed confirmation! Falling back to stock."
+        echo "  WARNING: No frequency passed confirmation test."
+        LAST_STABLE_FREQ=2400000
+    fi
+fi
 
 # =============================================================================
 # Results
@@ -379,6 +468,7 @@ fi
 
 RESULT_MHZ=$((LAST_STABLE_FREQ / 1000))
 log "Maximum stable frequency: ${RESULT_MHZ} MHz"
+log "Confirmation test: $([ "$CONFIRM_PASSED" = true ] && echo "PASSED" || echo "FAILED/SKIPPED")"
 log "============================================================"
 
 # Save result
@@ -397,6 +487,8 @@ OC_DETECT_STEP=$STEP_SIZE
 OC_DETECT_FINE_STEP=$FINE_STEP_SIZE
 OC_DETECT_FINE_FROM=$FINE_STEP_FROM
 OC_DETECT_STRESS_DURATION=$STRESS_DURATION
+OC_DETECT_CONFIRM_DURATION=$CONFIRM_DURATION
+OC_DETECT_CONFIRM_PASSED=$CONFIRM_PASSED
 OC_DETECT_MAX_TEMP=$MAX_TEMP
 OC_DETECT_DATE="$(date '+%Y-%m-%d %H:%M:%S')"
 OC_DETECT_HW_MAX=$HW_MAX
@@ -405,6 +497,11 @@ EOF
 echo ""
 echo "============================================================"
 echo "  Maximum stable frequency: ${RESULT_MHZ} MHz"
+if [ "$CONFIRM_PASSED" = true ]; then
+    echo "  Confirmation test:        PASSED (${CONFIRM_DURATION}s)"
+else
+    echo "  Confirmation test:        NOT PASSED"
+fi
 echo "  Results saved to: $OC_CONFIG"
 echo "  Reboot to apply the new frequency."
 echo "============================================================"
@@ -416,7 +513,23 @@ if is_under_voltage "$FINAL_THROTTLE"; then
     log "WARNING: Under-voltage detected during test. Use official Pi 5.1V 5A PSU."
     echo "  WARNING: Under-voltage detected! Results may be unreliable."
     echo "  Use the official Raspberry Pi 5.1V 5A power supply."
+    echo ""
 fi
+
+# Pi-Under-Pressure recommendation
+echo "---------------------------------------------------------------"
+echo "  RECOMMENDATION: For full confidence in your overclock"
+echo "  stability, run a longer comprehensive stress test using"
+echo "  Pi-Under-Pressure (available in the System menu of the"
+echo "  Web3 Pi control panel, or via CLI):"
+echo ""
+echo "    pi-under-pressure -d 1h"
+echo ""
+echo "  This exercises CPU, memory, and I/O simultaneously for a"
+echo "  more thorough validation of your overclock settings."
+echo "---------------------------------------------------------------"
+echo ""
+log "RECOMMENDATION: Run pi-under-pressure -d 1h for comprehensive validation."
 
 # EXIT trap will call restore_safe_freq
 exit 0
