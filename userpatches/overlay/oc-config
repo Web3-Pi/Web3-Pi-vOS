@@ -1,0 +1,11 @@
+# Web3 Pi - Auto OC Detection Configuration
+# Managed by auto-oc-detect.sh and cpu-freq-safe.sh
+#
+# On fresh install, defaults to stock frequency (2400 MHz).
+# Run Auto OC Detection from the control panel to find your max.
+
+# Maximum stable frequency (in kHz). 0 = not yet detected, use default.
+OC_DETECTED_MAX_FREQ=0
+
+# Detection metadata (populated after running auto-oc-detect.sh)
+OC_DETECT_DATE=""

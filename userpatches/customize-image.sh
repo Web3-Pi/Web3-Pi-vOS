@@ -219,6 +219,37 @@ chmod +x /opt/web3pi/control-panel/lib/*.sh
 chmod +x /opt/web3pi/control-panel/modules/*.sh
 #--------------------------------------------------------------------------------------------
 
+## CPU Frequency Safety Service (Auto OC) ###################################################
+# Disable Armbian's hardware optimization service - it would override our
+# CPU frequency clamp by reading /etc/default/cpufrequtils with CPUMAX values.
+# Our cpu-freq-safe.service is the sole controller of CPU frequency.
+systemctl disable armbian-hardware-optimize.service 2>/dev/null || true
+
+# Override /etc/default/cpufrequtils with safe defaults
+# (belt-and-suspenders: even if something reads this file, values are safe)
+cat > /etc/default/cpufrequtils << EOF
+ENABLE=false
+MIN_SPEED=500000
+MAX_SPEED=2400000
+GOVERNOR=ondemand
+EOF
+
+# Early-boot service that clamps CPU frequency to detected safe maximum
+# config.txt sets arm_freq high (3000 MHz) as hardware ceiling,
+# but this service immediately clamps to the detected stable freq at boot
+cp /tmp/overlay/cpu-freq-safe.service /etc/systemd/system/cpu-freq-safe.service
+cp /tmp/overlay/cpu-freq-safe.sh /opt/web3pi/cpu-freq-safe.sh
+chmod +x /opt/web3pi/cpu-freq-safe.sh
+systemctl enable cpu-freq-safe.service
+
+# Auto OC detection script (run on-demand from control panel)
+cp /tmp/overlay/auto-oc-detect.sh /opt/web3pi/auto-oc-detect.sh
+chmod +x /opt/web3pi/auto-oc-detect.sh
+
+# Default OC configuration (no detection run yet = stock 2400 MHz)
+cp /tmp/overlay/oc-config /opt/web3pi/oc-config
+#--------------------------------------------------------------------------------------------
+
 ## Trusted node sync script #################################################################
 # Script for fast initial sync using checkpoint sync servers
 cp /tmp/overlay/trusted-node-sync.sh /opt/web3pi/trusted-node-sync.sh
