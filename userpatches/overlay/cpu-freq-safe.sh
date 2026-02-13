@@ -10,6 +10,7 @@
 # If no detection has been run yet, falls back to 2400 MHz (stock Pi5).
 
 OC_CONFIG="/opt/web3pi/oc-config"
+OC_PROGRESS="/opt/web3pi/oc-detect-progress"
 DEFAULT_SAFE_FREQ=2400000  # 2400 MHz in kHz - stock Pi5 frequency
 LOG_TAG="cpu-freq-safe"
 
@@ -20,6 +21,21 @@ if [ -f "$OC_CONFIG" ]; then
     if [ -n "$OC_DETECTED_MAX_FREQ" ] && [ "$OC_DETECTED_MAX_FREQ" -gt 0 ] 2>/dev/null; then
         SAFE_MAX_FREQ="$OC_DETECTED_MAX_FREQ"
     fi
+fi
+
+# Check for interrupted OC detection (e.g. kernel panic during stress test)
+# Progress file contains the last frequency that passed stress testing
+if [ -f "$OC_PROGRESS" ]; then
+    PROGRESS_FREQ=$(cat "$OC_PROGRESS" 2>/dev/null || echo "0")
+    if [ "$PROGRESS_FREQ" -gt 0 ] 2>/dev/null; then
+        logger -t "$LOG_TAG" "WARNING: OC detection was interrupted (crash/panic). Last stable freq: ${PROGRESS_FREQ} kHz"
+        # Use the higher of config vs progress (don't downgrade from previous detection)
+        if [ "$PROGRESS_FREQ" -gt "$SAFE_MAX_FREQ" ]; then
+            SAFE_MAX_FREQ="$PROGRESS_FREQ"
+        fi
+    fi
+    # Clean up progress file so this only triggers once
+    rm -f "$OC_PROGRESS"
 fi
 
 logger -t "$LOG_TAG" "Applying CPU frequency clamp: max=${SAFE_MAX_FREQ} kHz"

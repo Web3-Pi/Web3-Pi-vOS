@@ -25,6 +25,7 @@ MAX_TEMP=85              # Celsius - abort step if exceeded
 COOLDOWN_TEMP=55         # Wait until CPU cools to this before next step
 COOLDOWN_TIMEOUT=120     # Max seconds to wait for cooldown
 OC_CONFIG="/opt/web3pi/oc-config"
+OC_PROGRESS="/opt/web3pi/oc-detect-progress"
 OC_LOG="/opt/web3pi/logs/auto-oc-detect.log"
 LOCK_FILE="/tmp/auto-oc-detect.lock"
 NUM_CORES=$(nproc)
@@ -160,6 +161,9 @@ set_all_cpus() {
 
 restore_safe_freq() {
     log "Restoring safe frequency..."
+    # Clean up progress file on normal exit / Ctrl+C
+    # (kernel panic won't reach here - that's intentional, boot script will recover)
+    rm -f "$OC_PROGRESS"
     local safe_freq=2400000
     if [ -f "$OC_CONFIG" ]; then
         . "$OC_CONFIG"
@@ -339,6 +343,10 @@ TOTAL_STEPS=${#FREQ_LIST[@]}
 LAST_STABLE_FREQ=0
 STEP_NUM=0
 
+# Create progress file - survives kernel panic so boot script can recover
+echo "0" > "$OC_PROGRESS"
+sync
+
 for CURRENT_FREQ in "${FREQ_LIST[@]}"; do
     STEP_NUM=$((STEP_NUM + 1))
     FREQ_MHZ=$((CURRENT_FREQ / 1000))
@@ -385,7 +393,9 @@ for CURRENT_FREQ in "${FREQ_LIST[@]}"; do
     # Run NEON/SIMD stress test
     if run_stress_test "$STRESS_DURATION" "${FREQ_MHZ} MHz" "detection"; then
         LAST_STABLE_FREQ=$CURRENT_FREQ
-        log "RESULT: ${FREQ_MHZ} MHz is STABLE"
+        echo "$LAST_STABLE_FREQ" > "$OC_PROGRESS"
+        sync
+        log "RESULT: ${FREQ_MHZ} MHz is STABLE (progress saved)"
         echo "  OK: ${FREQ_MHZ} MHz stable (temp: $(get_cpu_temp)C)"
     else
         log "RESULT: ${FREQ_MHZ} MHz is NOT stable"
@@ -431,6 +441,8 @@ if [ "$LAST_STABLE_FREQ" -gt 0 ]; then
             log "CONFIRMATION PASSED: ${CONFIRM_MHZ} MHz is stable for ${CONFIRM_DURATION}s"
             echo "  CONFIRMED: ${CONFIRM_MHZ} MHz stable for ${CONFIRM_DURATION}s"
             LAST_STABLE_FREQ=$CONFIRM_FREQ
+            echo "$LAST_STABLE_FREQ" > "$OC_PROGRESS"
+            sync
             CONFIRM_PASSED=true
             break
         else
@@ -493,6 +505,9 @@ OC_DETECT_MAX_TEMP=$MAX_TEMP
 OC_DETECT_DATE="$(date '+%Y-%m-%d %H:%M:%S')"
 OC_DETECT_HW_MAX=$HW_MAX
 EOF
+
+# Remove progress file - final result is now in oc-config
+rm -f "$OC_PROGRESS"
 
 echo ""
 echo "============================================================"
