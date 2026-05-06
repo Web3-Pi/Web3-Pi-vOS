@@ -250,6 +250,36 @@ git-force-clone -b master https://github.com/raspberrypi/rpi-eeprom /opt/web3pi/
 #--------------------------------------------------------------------------------------------
 
 
+## Install Web3 Pi UPS agent (w3p-ups) ######################################################
+# Pre-install the latest released agent so the image boots with UPS monitoring
+# and graceful shutdown ready. Falls back silently if the release tarball can't
+# be fetched at build time — control-panel still has an "install/update" path.
+W3P_UPS_VERSION=$(curl -fsSL "https://api.github.com/repos/Web3-Pi/Web3-Pi-UPS-Service/releases/latest" 2>/dev/null | grep '"tag_name":' | head -1 | sed -E 's/.*"([^"]+)".*/\1/')
+if [ -z "$W3P_UPS_VERSION" ]; then
+    echo "WARN: could not resolve latest w3p-ups release tag; skipping pre-install"
+else
+    W3P_UPS_TARBALL_URL="https://github.com/Web3-Pi/Web3-Pi-UPS-Service/releases/download/${W3P_UPS_VERSION}/w3p-ups-${W3P_UPS_VERSION}-aarch64.tar.gz"
+    W3P_UPS_TMP=$(mktemp -d)
+    if curl -fsSL "$W3P_UPS_TARBALL_URL" -o "${W3P_UPS_TMP}/w3p-ups.tar.gz"; then
+        tar -xzf "${W3P_UPS_TMP}/w3p-ups.tar.gz" -C "${W3P_UPS_TMP}"
+        install -m 755 "${W3P_UPS_TMP}/w3p-ups" /usr/local/bin/w3p-ups
+        mkdir -p /etc/w3p-ups
+        # config.toml.example becomes the default config; existing-file checks in
+        # the agent's installer aren't applicable here since the image is fresh.
+        install -m 644 "${W3P_UPS_TMP}/config.toml.example" /etc/w3p-ups/config.toml
+        install -m 755 "${W3P_UPS_TMP}/shutdown.sh" /etc/w3p-ups/shutdown.sh
+        install -m 644 "${W3P_UPS_TMP}/w3p-ups.service" /etc/systemd/system/w3p-ups.service
+        systemctl daemon-reload
+        systemctl enable w3p-ups.service
+        echo "w3p-ups ${W3P_UPS_VERSION} installed; service enabled."
+    else
+        echo "WARN: failed to download w3p-ups tarball from $W3P_UPS_TARBALL_URL"
+    fi
+    rm -rf "${W3P_UPS_TMP}"
+fi
+#--------------------------------------------------------------------------------------------
+
+
 ## Basic Security hardening #######################################################################
 # Lock the root account
 passwd --lock root

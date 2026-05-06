@@ -684,13 +684,14 @@ system_ups_menu() {
 
         CHOICE=$(whiptail --title "Web3 Pi UPS" \
             --menu "Installed: $INSTALLED | Service: $SERVICE_STATUS | Boot: $ENABLED_STATUS" \
-            $TERM_HEIGHT $TERM_WIDTH 8 \
-            "1" "Install" \
+            $TERM_HEIGHT $TERM_WIDTH 9 \
+            "1" "Install / Update" \
             "2" "Uninstall" \
             "3" "Service Control" \
             "4" "Configure" \
             "5" "View Logs" \
-            "6" "About" \
+            "6" "Live UPS data" \
+            "7" "About" \
             "0" "Back" \
             3>&1 1>&2 2>&3)
 
@@ -700,10 +701,30 @@ system_ups_menu() {
             3) system_ups_service_control ;;
             4) system_ups_configure ;;
             5) system_ups_logs ;;
-            6) system_ups_about ;;
+            6) system_ups_live_data ;;
+            7) system_ups_about ;;
             0|"") return ;;
         esac
     done
+}
+
+system_ups_live_data() {
+    if [ ! -f /usr/local/bin/w3p-ups ]; then
+        msg_box "Not Installed" "Web3 Pi UPS is not installed."
+        return
+    fi
+    if ! systemctl is-active w3p-ups &>/dev/null; then
+        msg_box "Service Inactive" "The w3p-ups service is not running.\nStart it from 'Service Control' first."
+        return
+    fi
+    clear
+    echo "==============================================================="
+    echo "  LIVE UPS DATA — press Ctrl-C to return to the menu"
+    echo "==============================================================="
+    echo ""
+    /usr/local/bin/w3p-ups watch || true
+    echo ""
+    read -p "Press Enter to return to the menu..."
 }
 
 system_ups_install() {
