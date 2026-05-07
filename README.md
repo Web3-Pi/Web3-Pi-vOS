@@ -8,6 +8,13 @@
 > This project is in active development. Use at your own risk.
 > Always validate on a testnet (`hoodi`) before considering mainnet.
 
+<p align="center">
+  <a href="docs/images/03-control-panel-main-menu.png">
+    <img src="docs/images/03-control-panel-main-menu.png" alt="Web3 Pi Control Panel — main menu" width="720">
+  </a>
+</p>
+<p align="center"><sub><i>The Control Panel — single TUI entry point for every operation</i></sub></p>
+
 ---
 
 ## Documentation Map
@@ -156,6 +163,11 @@ Default credentials:
 
 You will be **forced to change the password** on first login.
 
+<p align="center">
+  <a href="docs/images/01-first-login-password-change.png"><img src="docs/images/01-first-login-password-change.png" alt="Forced password change on first login" width="380"></a>
+</p>
+<p align="center"><sub><i>Left: forced password change on first login. Right: MOTD banner with system stats — launch the Control Panel from here.</i></sub></p>
+
 ---
 
 ## The Control Panel
@@ -190,6 +202,95 @@ sudo ./control-panel.sh
 | 9 | **Validator Management** | Import keys (SSH or USB), fee recipient, graffiti, start/stop, voluntary exit |
 
 > A complete annotated tree of every submenu is in [desc.md §8](desc.md).
+
+### Submenu gallery
+
+Every Control Panel section is a self-contained whiptail menu. Click any thumbnail for full size.
+
+<table>
+<tr>
+<td align="center" width="33%">
+<a href="docs/images/04-network-configuration.png"><img src="docs/images/04-network-configuration.png" alt="Eth Network Configuration" width="260"></a><br>
+<b>Eth Network Configuration</b><br>
+<sub>Network · Geth/Nimbus P2P ports</sub>
+</td>
+<td align="center" width="33%">
+<a href="docs/images/05-ssh-security.png"><img src="docs/images/05-ssh-security.png" alt="SSH Security" width="260"></a><br>
+<b>SSH Security</b><br>
+<sub>Keys · password auth · FIDO2</sub>
+</td>
+<td align="center" width="33%">
+<a href="docs/images/06-luks-encrypted-storage.png"><img src="docs/images/06-luks-encrypted-storage.png" alt="LUKS Encrypted Storage" width="260"></a><br>
+<b>LUKS Encrypted Storage</b><br>
+<sub>Encrypted partition for validator keys</sub>
+</td>
+</tr>
+<tr>
+<td align="center">
+<a href="docs/images/07-initial-sync.png"><img src="docs/images/07-initial-sync.png" alt="Initial Sync" width="260"></a><br>
+<b>Initial Sync</b><br>
+<sub>Trusted-node checkpoint sync</sub>
+</td>
+<td align="center">
+<a href="docs/images/08-service-management.png"><img src="docs/images/08-service-management.png" alt="Service Management" width="260"></a><br>
+<b>Service Management</b><br>
+<sub>Geth · Nimbus beacon · validator</sub>
+</td>
+<td align="center">
+<a href="docs/images/09-monitoring.png"><img src="docs/images/09-monitoring.png" alt="Monitoring" width="260"></a><br>
+<b>Monitoring</b><br>
+<sub>Sync · peers · RAM/CPU · disk</sub>
+</td>
+</tr>
+<tr>
+<td align="center">
+<a href="docs/images/10-data-management.png"><img src="docs/images/10-data-management.png" alt="Data Management" width="260"></a><br>
+<b>Data Management</b><br>
+<sub>Wipe Geth / Nimbus / signer data</sub>
+</td>
+<td align="center">
+<a href="docs/images/11-system-menu.png"><img src="docs/images/11-system-menu.png" alt="System" width="260"></a><br>
+<b>System</b><br>
+<sub>Hostname · timezone · EEPROM · OC</sub>
+</td>
+<td align="center">
+<a href="docs/images/16-validator-management.png"><img src="docs/images/16-validator-management.png" alt="Validator Management" width="260"></a><br>
+<b>Validator Management</b><br>
+<sub>Import keys · fee recipient · exit</sub>
+</td>
+</tr>
+</table>
+
+#### System submenu — power & overclocking tools
+
+<table>
+<tr>
+<td align="center" width="25%">
+<a href="docs/images/12-system-menu-ups-highlighted.png"><img src="docs/images/12-system-menu-ups-highlighted.png" alt="System menu — Web3 Pi UPS highlighted" width="200"></a><br>
+<sub>Navigating to <b>Web3 Pi UPS</b></sub>
+</td>
+<td align="center" width="25%">
+<a href="docs/images/13-web3-pi-ups.png"><img src="docs/images/13-web3-pi-ups.png" alt="Web3 Pi UPS" width="200"></a><br>
+<b>Web3 Pi UPS</b><br>
+<sub>Install · service · live data</sub>
+</td>
+<td align="center" width="25%">
+<a href="docs/images/14-pi-under-pressure.png"><img src="docs/images/14-pi-under-pressure.png" alt="Pi-Under-Pressure stress test" width="200"></a><br>
+<b>Pi-Under-Pressure</b><br>
+<sub>5-minute thermal stress test</sub>
+</td>
+<td align="center" width="25%">
+<a href="docs/images/15-auto-oc-detection.png"><img src="docs/images/15-auto-oc-detection.png" alt="Auto OC Detection" width="200"></a><br>
+<b>Auto OC Detection</b><br>
+<sub>Find max stable clock automatically</sub>
+</td>
+</tr>
+</table>
+
+<p align="center">
+  <a href="docs/images/17-web3-pi-ups-live-data.png"><img src="docs/images/17-web3-pi-ups-live-data.png" alt="Web3 Pi UPS — live telemetry view" width="560"></a>
+</p>
+<p align="center"><sub><i><b>Web3 Pi UPS → Live UPS data</b> — real-time power telemetry (source, V/I, battery SoC, thermal, faults) alongside host stats (CPU, memory, disk, network, Ethereum status). Project: <a href="https://github.com/Web3-Pi/Web3-Pi-UPS">Web3-Pi/Web3-Pi-UPS</a>.</i></sub></p>
 
 ---
 
