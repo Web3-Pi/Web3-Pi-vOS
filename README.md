@@ -161,7 +161,7 @@ Default credentials:
 You will be **forced to change the password** on first login.
 
 <p align="center">
-  <a href="docs/images/01-first-login-password-change.png"><img src="docs/images/01-first-login-password-change.png" alt="Forced password change on first login" width="380"></a>
+  <a href="docs/images/01-first-login-password-change.png"><img src="docs/images/01-first-login-password-change.png" alt="Forced password change on first login" width="720"></a>
 </p>
 <p align="center"><sub><i>Left: forced password change on first login. Right: MOTD banner with system stats — launch the Control Panel from here.</i></sub></p>
 
@@ -285,7 +285,7 @@ Every Control Panel section is a self-contained whiptail menu. Click any thumbna
 </table>
 
 <p align="center">
-  <a href="docs/images/17-web3-pi-ups-live-data.png"><img src="docs/images/17-web3-pi-ups-live-data.png" alt="Web3 Pi UPS — live telemetry view" width="560"></a>
+  <a href="docs/images/17-web3-pi-ups-live-data.png"><img src="docs/images/17-web3-pi-ups-live-data.png" alt="Web3 Pi UPS — live telemetry view" width="720"></a>
 </p>
 <p align="center"><sub><i><b>Web3 Pi UPS → Live UPS data</b> — real-time power telemetry (source, V/I, battery SoC, thermal, faults) alongside host stats (CPU, memory, disk, network, Ethereum status). Project: <a href="https://github.com/Web3-Pi/Web3-Pi-UPS">Web3-Pi/Web3-Pi-UPS</a>.</i></sub></p>
 
