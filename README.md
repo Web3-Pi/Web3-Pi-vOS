@@ -25,9 +25,6 @@ This README is the entry point. For deeper material, jump to:
 |----------|--------------|
 | **[desc.md](desc.md)** | **Full system reference** — architecture, users, LUKS internals, nftables rules, services, packages, every Control Panel option |
 | [getting-started.md](getting-started.md) | Step-by-step staking walkthrough (network choice, keys import, daily ops) |
-| [CONTRIBUTING.md](CONTRIBUTING.md) | Contribution workflow (inherited from Armbian) |
-| [CREDITS.md](CREDITS.md) | Acknowledgements |
-| [CLAUDE.md](CLAUDE.md) | Repo conventions for Claude Code |
 
 > If you want to understand **how the system is wired internally** (build phases,
 > user model, encrypted partition layout, service dependencies, port table,
