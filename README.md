@@ -89,26 +89,23 @@ Full details: **[desc.md](desc.md)**.
 The image is produced by the [Armbian Build Framework](https://docs.armbian.com/Developer-Guide_Build-Options/),
 configured via [userpatches/config-w3p.conf](userpatches/config-w3p.conf).
 
-### Quick build (Docker — recommended)
+### Build
 
 ```bash
-git clone https://github.com/<org>/Web3-Pi-vOS.git
+git clone https://github.com/Web3-Pi/Web3-Pi-vOS.git
 cd Web3-Pi-vOS
-
-# Build inside a Docker container (clean, reproducible)
-PREFER_DOCKER=yes ./compile.sh w3p
+./compile.sh w3p
 ```
 
-### Native build (Ubuntu/Debian host)
+That's it. The script auto-detects the host: on **macOS** (and any non-Debian/Ubuntu host) it builds inside a Docker container; on **Debian/Ubuntu** it can build natively. Docker Desktop must be running on macOS.
+
+Optional release packaging (compress + checksum):
 
 ```bash
-sudo ./compile.sh w3p
+./compress.sh
+# → output/images/Web3Pi-SoloStakingOS.img.xz
+# → output/images/Web3Pi-SoloStakingOS.img.xz.sha256
 ```
-
-> Native builds require a Debian/Ubuntu host with build dependencies installed.
-> See the [Armbian docs](https://docs.armbian.com/Developer-Guide_Build-Preparation/)
-> for host requirements. **Docker is recommended** — it isolates the build and
-> matches CI exactly.
 
 ### What `./compile.sh w3p` does
 
@@ -116,7 +113,7 @@ sudo ./compile.sh w3p
 2. Builds the kernel, bootloader, and rootfs in a chroot.
 3. Runs [userpatches/customize-image.sh](userpatches/customize-image.sh) inside the chroot — installs Geth/Nimbus, creates users, deploys the Control Panel and service files, locks down SSH/firewall.
 4. Copies everything in [userpatches/overlay/](userpatches/overlay/) into the rootfs.
-5. Packages an `.img` (and optionally `.img.xz`).
+5. Packages an `.img`.
 
 ### Output
 
