@@ -20,6 +20,7 @@ system_menu() {
             "8" "Update Firmware (EEPROM)" \
             "B" "OC (Pi-Under-Pressure)" \
             "C" "Web3 Pi UPS" \
+            "D" "Auto OC Detection" \
             "9" "Reboot System" \
             "A" "Shutdown System" \
             "0" "Back to Main Menu" \
@@ -36,6 +37,7 @@ system_menu() {
             8) system_firmware_update ;;
             B) system_oc_menu ;;
             C) system_ups_menu ;;
+            D) system_auto_oc_menu ;;
             9)
                 if yesno_box "Reboot" "Reboot the system now?"; then
                     reboot
@@ -1230,4 +1232,339 @@ system_ups_about() {
     INFO+="Source: github.com/Web3-Pi/Web3-Pi-UPS-Service\n"
 
     msg_box "About Web3 Pi UPS" "$INFO"
+}
+
+# =============================================================================
+# Auto OC Detection Functions
+# =============================================================================
+
+system_auto_oc_menu() {
+    local OC_CONFIG="/opt/web3pi/oc-config"
+
+    while true; do
+        # Read current OC status
+        local DETECTED_FREQ="Not detected"
+        local DETECT_DATE="Never"
+        local CURRENT_FREQ="N/A"
+        local HW_MAX="N/A"
+
+        if [ -f "$OC_CONFIG" ]; then
+            source "$OC_CONFIG"
+            if [ -n "${OC_DETECTED_MAX_FREQ:-}" ] && [ "$OC_DETECTED_MAX_FREQ" -gt 0 ] 2>/dev/null; then
+                DETECTED_FREQ="$((OC_DETECTED_MAX_FREQ / 1000)) MHz"
+            fi
+            DETECT_DATE="${OC_DETECT_DATE:-Never}"
+        fi
+
+        CURRENT_FREQ=$(cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_cur_freq 2>/dev/null)
+        if [ -n "$CURRENT_FREQ" ]; then
+            CURRENT_FREQ="$((CURRENT_FREQ / 1000)) MHz"
+        fi
+
+        HW_MAX=$(cat /sys/devices/system/cpu/cpu0/cpufreq/cpuinfo_max_freq 2>/dev/null)
+        if [ -n "$HW_MAX" ]; then
+            HW_MAX="$((HW_MAX / 1000)) MHz"
+        fi
+
+        # Read scan range settings
+        local OC_SETTINGS="/opt/web3pi/oc-settings"
+        local SCAN_START=2400
+        local SCAN_END=3200
+        if [ -f "$OC_SETTINGS" ]; then
+            source "$OC_SETTINGS"
+            [ -n "${OC_SCAN_START:-}" ] && SCAN_START=$((OC_SCAN_START / 1000))
+            [ -n "${OC_SCAN_END:-}" ] && SCAN_END=$((OC_SCAN_END / 1000))
+        fi
+
+        CHOICE=$(whiptail --title "Auto OC Detection" \
+            --menu "Detected Max: $DETECTED_FREQ | Current: $CURRENT_FREQ\nHW Ceiling: $HW_MAX | Last Run: $DETECT_DATE\nScan Range: ${SCAN_START} - ${SCAN_END} MHz" \
+            $TERM_HEIGHT $TERM_WIDTH 8 \
+            "1" "Run Auto OC Detection" \
+            "2" "View Last Results" \
+            "3" "View Detection Log" \
+            "4" "Settings (range: ${SCAN_START}-${SCAN_END} MHz)" \
+            "5" "Reset to Stock (2400 MHz)" \
+            "6" "About" \
+            "0" "Back" \
+            3>&1 1>&2 2>&3)
+
+        case $CHOICE in
+            1) system_auto_oc_run ;;
+            2) system_auto_oc_results ;;
+            3) system_auto_oc_log ;;
+            4) system_auto_oc_settings ;;
+            5) system_auto_oc_reset ;;
+            6) system_auto_oc_about ;;
+            0|"") return ;;
+        esac
+    done
+}
+
+system_auto_oc_settings() {
+    local OC_SETTINGS="/opt/web3pi/oc-settings"
+
+    # Read current settings
+    local CURRENT_START=2400000
+    local CURRENT_END=3200000
+    if [ -f "$OC_SETTINGS" ]; then
+        source "$OC_SETTINGS"
+        [ -n "${OC_SCAN_START:-}" ] && CURRENT_START=$OC_SCAN_START
+        [ -n "${OC_SCAN_END:-}" ] && CURRENT_END=$OC_SCAN_END
+    fi
+
+    while true; do
+        CHOICE=$(whiptail --title "Auto OC Settings" \
+            --menu "Start: $((CURRENT_START / 1000)) MHz | End: $((CURRENT_END / 1000)) MHz" \
+            $TERM_HEIGHT $TERM_WIDTH 4 \
+            "1" "Start Frequency ($((CURRENT_START / 1000)) MHz)" \
+            "2" "End Frequency ($((CURRENT_END / 1000)) MHz)" \
+            "0" "Back" \
+            3>&1 1>&2 2>&3)
+
+        case $CHOICE in
+            1)
+                NEW_START=$(whiptail --title "Start Frequency" \
+                    --menu "Start scanning from:" $TERM_HEIGHT $TERM_WIDTH 5 \
+                    "2400000" "2400 MHz (stock)" \
+                    "2500000" "2500 MHz" \
+                    "2600000" "2600 MHz" \
+                    "2700000" "2700 MHz" \
+                    "2800000" "2800 MHz" \
+                    3>&1 1>&2 2>&3)
+                if [ -n "$NEW_START" ]; then
+                    if [ "$NEW_START" -ge "$CURRENT_END" ]; then
+                        msg_box "Error" "Start frequency must be lower than end frequency ($((CURRENT_END / 1000)) MHz)."
+                    else
+                        CURRENT_START=$NEW_START
+                        cat > "$OC_SETTINGS" << EOF
+# Web3 Pi - Auto OC Detection Settings
+OC_SCAN_START=$CURRENT_START
+OC_SCAN_END=$CURRENT_END
+EOF
+                    fi
+                fi
+                ;;
+            2)
+                NEW_END=$(whiptail --title "End Frequency" \
+                    --menu "Stop scanning at:" $TERM_HEIGHT $TERM_WIDTH 5 \
+                    "2800000" "2800 MHz" \
+                    "2900000" "2900 MHz" \
+                    "3000000" "3000 MHz" \
+                    "3100000" "3100 MHz" \
+                    "3200000" "3200 MHz" \
+                    3>&1 1>&2 2>&3)
+                if [ -n "$NEW_END" ]; then
+                    if [ "$NEW_END" -le "$CURRENT_START" ]; then
+                        msg_box "Error" "End frequency must be higher than start frequency ($((CURRENT_START / 1000)) MHz)."
+                    else
+                        CURRENT_END=$NEW_END
+                        cat > "$OC_SETTINGS" << EOF
+# Web3 Pi - Auto OC Detection Settings
+OC_SCAN_START=$CURRENT_START
+OC_SCAN_END=$CURRENT_END
+EOF
+                    fi
+                fi
+                ;;
+            0|"") return ;;
+        esac
+    done
+}
+
+system_auto_oc_run() {
+    # Check if detection script exists
+    if [ ! -x /opt/web3pi/auto-oc-detect.sh ]; then
+        msg_box "Error" "auto-oc-detect.sh not found or not executable."
+        return
+    fi
+
+    # Check if already running
+    if [ -f /tmp/auto-oc-detect.lock ]; then
+        if ! flock -n /tmp/auto-oc-detect.lock true 2>/dev/null; then
+            msg_box "Already Running" "An OC detection is already in progress.\n\nPlease wait for it to complete."
+            return
+        fi
+    fi
+
+    # Read scan range settings
+    local OC_SETTINGS="/opt/web3pi/oc-settings"
+    local SCAN_START=2400000
+    local SCAN_END=3200000
+    if [ -f "$OC_SETTINGS" ]; then
+        source "$OC_SETTINGS"
+        [ -n "${OC_SCAN_START:-}" ] && SCAN_START=$OC_SCAN_START
+        [ -n "${OC_SCAN_END:-}" ] && SCAN_END=$OC_SCAN_END
+    fi
+    local SCAN_START_MHZ=$((SCAN_START / 1000))
+    local SCAN_END_MHZ=$((SCAN_END / 1000))
+
+    local NUM_STEPS_DLG=$(( (SCAN_END - SCAN_START) / 100000 + 1 ))
+    local EST_MIN_DLG=$(( NUM_STEPS_DLG * 3 + 5 ))
+
+    if ! yesno_box "Run Auto OC Detection" \
+        "This will test CPU frequencies from ${SCAN_START_MHZ} to ${SCAN_END_MHZ} MHz\n(${NUM_STEPS_DLG} steps, ~${EST_MIN_DLG} min total)\nusing NEON/SIMD stress tests (3 min per step),\nfollowed by a 5-minute confirmation at the max stable freq.\n\nChange range in Settings before running.\n\nREQUIREMENTS:\n- Active cooling MUST be working\n- Official 5.1V 5A power supply\n- No heavy workloads running\n\nThe system remains safe at all times.\n\nProceed?"; then
+        return
+    fi
+
+    # Warn about running Ethereum services
+    local SERVICES_RUNNING=""
+    if systemctl is-active --quiet geth 2>/dev/null; then
+        SERVICES_RUNNING+="  - Geth (Execution Layer)\n"
+    fi
+    if systemctl is-active --quiet nimbus-beacon-node 2>/dev/null; then
+        SERVICES_RUNNING+="  - Nimbus Beacon Node\n"
+    fi
+
+    if [ -n "$SERVICES_RUNNING" ]; then
+        if ! yesno_box "Services Running" \
+            "These services are currently running:\n\n${SERVICES_RUNNING}\nRunning OC detection alongside them\nmay give less accurate results.\n\nRecommendation: Stop services first.\n\nContinue anyway?"; then
+            return
+        fi
+    fi
+
+    local NUM_STEPS=$(( (SCAN_END - SCAN_START) / 100000 + 1 ))
+    local EST_MINUTES=$(( NUM_STEPS * 3 + 5 ))
+
+    clear
+    echo "==============================================================="
+    echo "         AUTO OVERCLOCK DETECTION"
+    echo "==============================================================="
+    echo ""
+    echo "Testing frequencies: ${SCAN_START_MHZ} - ${SCAN_END_MHZ} MHz (NEON stress, 3 min/step)"
+    echo "Steps: ${NUM_STEPS}, estimated time: ~${EST_MINUTES} min (incl. 5 min confirmation)"
+    echo ""
+    echo "Press Ctrl+C to abort safely (frequency will be restored)"
+    echo ""
+    echo "---------------------------------------------------------------"
+    echo ""
+
+    /opt/web3pi/auto-oc-detect.sh --start "$SCAN_START" --end "$SCAN_END" 2>&1
+
+    echo ""
+    echo "==============================================================="
+    echo "  Detection complete."
+    echo "  Reboot to apply the detected frequency."
+    echo "==============================================================="
+    echo ""
+
+    read -p "Press Enter to continue..."
+}
+
+system_auto_oc_results() {
+    local OC_CONFIG="/opt/web3pi/oc-config"
+
+    if [ ! -f "$OC_CONFIG" ]; then
+        msg_box "No Results" "No OC detection has been run yet.\n\nUse 'Run Auto OC Detection' first."
+        return
+    fi
+
+    source "$OC_CONFIG"
+
+    INFO="===============================================================\n"
+    INFO+="            AUTO OC DETECTION RESULTS\n"
+    INFO+="===============================================================\n\n"
+    INFO+="  DETECTED MAXIMUM STABLE FREQUENCY\n"
+    INFO+="---------------------------------------------------------------\n"
+    if [ -n "${OC_DETECTED_MAX_FREQ:-}" ] && [ "$OC_DETECTED_MAX_FREQ" -gt 0 ] 2>/dev/null; then
+        INFO+="  Max Stable:   $((OC_DETECTED_MAX_FREQ / 1000)) MHz\n"
+    else
+        INFO+="  Max Stable:   Not determined (using stock 2400 MHz)\n"
+    fi
+    INFO+="\n  DETECTION PARAMETERS\n"
+    INFO+="---------------------------------------------------------------\n"
+    INFO+="  Range:        $((${OC_DETECT_START:-0} / 1000)) - $((${OC_DETECT_END:-0} / 1000)) MHz\n"
+    INFO+="  Step size:    $((${OC_DETECT_STEP:-0} / 1000)) MHz\n"
+    INFO+="  Stress time:  ${OC_DETECT_STRESS_DURATION:-N/A} sec/step\n"
+    INFO+="  Confirm time: ${OC_DETECT_CONFIRM_DURATION:-N/A} sec\n"
+    INFO+="  Confirmed:    $([ "${OC_DETECT_CONFIRM_PASSED:-false}" = "true" ] && echo "YES" || echo "NO")\n"
+    INFO+="  Max temp:     ${OC_DETECT_MAX_TEMP:-N/A}C\n"
+    INFO+="  HW ceiling:   $((${OC_DETECT_HW_MAX:-0} / 1000)) MHz\n"
+    INFO+="  Run date:     ${OC_DETECT_DATE:-N/A}\n"
+    INFO+="\n  CURRENT STATUS\n"
+    INFO+="---------------------------------------------------------------\n"
+    local CUR=$(cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_cur_freq 2>/dev/null || echo "0")
+    local MAX=$(cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_max_freq 2>/dev/null || echo "0")
+    local GOV=$(cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor 2>/dev/null || echo "N/A")
+    INFO+="  Current freq: $((CUR / 1000)) MHz\n"
+    INFO+="  Max allowed:  $((MAX / 1000)) MHz\n"
+    INFO+="  Governor:     ${GOV}\n"
+
+    whiptail --title "Auto OC Detection Results" --scrolltext --msgbox "$INFO" 26 $TERM_WIDTH
+}
+
+system_auto_oc_log() {
+    local OC_LOG="/opt/web3pi/logs/auto-oc-detect.log"
+
+    if [ ! -f "$OC_LOG" ]; then
+        msg_box "No Log" "No detection log found.\n\nRun a detection first."
+        return
+    fi
+
+    CHOICE=$(whiptail --title "Detection Log" \
+        --menu "View detection log:" $TERM_HEIGHT $TERM_WIDTH 4 \
+        "1" "Last 50 lines" \
+        "2" "Full log (less)" \
+        "0" "Back" \
+        3>&1 1>&2 2>&3)
+
+    case $CHOICE in
+        1)
+            clear
+            tail -50 "$OC_LOG"
+            echo ""
+            read -p "Press Enter to continue..."
+            ;;
+        2)
+            less "$OC_LOG"
+            ;;
+    esac
+}
+
+system_auto_oc_reset() {
+    if ! yesno_box "Reset to Stock" \
+        "Reset CPU frequency to stock 2400 MHz?\n\nThis will:\n- Set detected max to 2400 MHz\n- Update the OC config file\n- Take effect on next reboot\n\nContinue?"; then
+        return
+    fi
+
+    cat > /opt/web3pi/oc-config << EOF
+# Web3 Pi - Auto OC Detection Results
+# Reset to stock: $(date '+%Y-%m-%d %H:%M:%S')
+OC_DETECTED_MAX_FREQ=2400000
+OC_DETECT_DATE="$(date '+%Y-%m-%d %H:%M:%S') (manual reset)"
+EOF
+
+    msg_box "Reset Complete" "CPU frequency reset to stock 2400 MHz.\n\nReboot to apply."
+}
+
+system_auto_oc_about() {
+    INFO="===============================================================\n"
+    INFO+="               AUTO OC DETECTION\n"
+    INFO+="===============================================================\n\n"
+    INFO+="Automatically discovers the maximum stable CPU overclock\n"
+    INFO+="for your specific Raspberry Pi 5.\n\n"
+    INFO+="How it works:\n"
+    INFO+="  1. config.txt sets a high HW ceiling (3200 MHz)\n"
+    INFO+="  2. cpu-freq-safe.service clamps to safe freq at boot\n"
+    INFO+="  3. Detection raises freq in 100/50 MHz steps\n"
+    INFO+="  4. Each step: 3-min NEON/SIMD stress + throttle check\n"
+    INFO+="  5. If stable: move to next step\n"
+    INFO+="  6. If unstable: previous step is the max candidate\n"
+    INFO+="  7. 5-min confirmation test at detected max\n"
+    INFO+="  8. If confirmation fails: step down and retry\n"
+    INFO+="  9. Result saved and applied on next reboot\n\n"
+    INFO+="Safety:\n"
+    INFO+="  - System always boots at safe frequency\n"
+    INFO+="  - Detection can be interrupted safely (Ctrl+C)\n"
+    INFO+="  - Frequency restored on any exit/error\n"
+    INFO+="  - Temperature limit enforced (85C)\n"
+    INFO+="  - Under-voltage detection\n\n"
+    INFO+="Requirements:\n"
+    INFO+="  - Active cooling (fan) must be working\n"
+    INFO+="  - Official power supply (5.1V 5A)\n\n"
+    INFO+="Files:\n"
+    INFO+="  - Config: /opt/web3pi/oc-config\n"
+    INFO+="  - Log:    /opt/web3pi/logs/auto-oc-detect.log\n"
+    INFO+="  - Script: /opt/web3pi/auto-oc-detect.sh\n"
+
+    msg_box "About Auto OC Detection" "$INFO"
 }
