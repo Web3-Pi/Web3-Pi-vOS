@@ -1214,21 +1214,30 @@ system_ups_logs() {
 }
 
 system_ups_about() {
+    local INSTALLED_VERSION="(not installed)"
+    if [ -x /usr/local/bin/w3p-ups ]; then
+        INSTALLED_VERSION=$(/usr/local/bin/w3p-ups --version 2>/dev/null | head -1 | awk '{print $2}')
+        [ -z "$INSTALLED_VERSION" ] && INSTALLED_VERSION="(unknown)"
+    fi
+
     INFO="===============================================================\n"
     INFO+="                    WEB3 PI UPS\n"
     INFO+="===============================================================\n\n"
-    INFO+="A battery monitoring and safe shutdown service for Raspberry Pi\n"
+    INFO+="Installed version: ${INSTALLED_VERSION}\n\n"
+    INFO+="A battery monitoring and safe shutdown agent for Raspberry Pi\n"
     INFO+="with Web3 Pi UPS hardware.\n\n"
     INFO+="Features:\n"
     INFO+="  - Real-time battery voltage monitoring\n"
     INFO+="  - Automatic safe shutdown on low battery\n"
     INFO+="  - Configurable shutdown thresholds\n"
     INFO+="  - Customizable shutdown script\n"
+    INFO+="  - Live UPS data view (CLI + control-panel)\n"
     INFO+="  - Protection for Ethereum validator keys\n\n"
     INFO+="Configuration:\n"
-    INFO+="  - Config file: /etc/w3p-ups/config.toml\n"
+    INFO+="  - Config file:     /etc/w3p-ups/config.toml\n"
     INFO+="  - Shutdown script: /etc/w3p-ups/shutdown.sh\n"
-    INFO+="  - Service: w3p-ups.service\n\n"
+    INFO+="  - IPC socket:      /run/w3p-ups/agent.sock\n"
+    INFO+="  - Service:         w3p-ups.service\n\n"
     INFO+="Source: github.com/Web3-Pi/Web3-Pi-UPS-Service\n"
 
     msg_box "About Web3 Pi UPS" "$INFO"
