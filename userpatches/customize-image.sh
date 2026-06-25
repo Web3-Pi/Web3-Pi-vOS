@@ -305,6 +305,12 @@ else
         mkdir -p /etc/w3p-ups
         # config.toml.example becomes the default config; existing-file checks in
         # the agent's installer aren't applicable here since the image is fresh.
+        # NOTE: the agent's [eth_clients] section monitors per-client systemd
+        # SERVICE state (running/stopped/failed — NOT chain sync) for the web
+        # panel's "ETH Clients" tiles. Its default unit names match the units
+        # this image installs above: execution=geth, consensus=nimbus-beacon-node,
+        # validator=nimbus-validator. If you swap EL/CL clients, update
+        # [eth_clients] in /etc/w3p-ups/config.toml to the new unit names.
         install -m 644 "${W3P_UPS_TMP}/config.toml.example" /etc/w3p-ups/config.toml
         install -m 755 "${W3P_UPS_TMP}/shutdown.sh" /etc/w3p-ups/shutdown.sh
         install -m 644 "${W3P_UPS_TMP}/w3p-ups.service" /etc/systemd/system/w3p-ups.service
