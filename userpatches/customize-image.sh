@@ -127,7 +127,7 @@ apt install -y software-properties-common apt-utils chrony avahi-daemon git git-
 apt install -y nvme-cli jq speedtest-cli file vim net-tools telnet apt-transport-https gdisk iotop 
 apt install -y screen bpytop cryptsetup unattended-upgrades dialog
 # development packages
-apt install -y smartmontools fio stress-ng neofetch 
+apt install -y smartmontools fio stress-ng fastfetch # fastfetch replaces neofetch (removed from Ubuntu >= 25.x)
 # apt install -y python3-pip python3-netifaces python3-dev libpython3-dev python3-venv
 # apt install -y gcc libraspberrypi-bin screen ccze iw flashrom figlet neofetch 
 #apt install -y iproute2 iputils-ping dnsutils gawk bsdutils # for Wan Failover script
