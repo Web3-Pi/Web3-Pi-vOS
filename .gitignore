@@ -31,3 +31,6 @@ Dockerfile
 
 # Claude Code instructions (local only)
 CLAUDE.md
+
+# Local AI-tooling artifacts
+.claude-flow/
