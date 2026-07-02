@@ -77,14 +77,19 @@ mkdir -p "$RUN_DIR"
 # --------------------------------------------------------- persisted state --
 LAST_SWITCH=0; LATCHED_UNTIL=0; SWITCH_TS=""; SWITCH_COUNT=0; LAST_ESCALATION=0
 VERIFY_ROLE=""; VERIFY_START=0; VERIFY_HEAD=0; NONE_OLDIP=""; APT_SIGNALED=0
+PREV_ACTIVE=""; LAST_IP_WIRED=""; LAST_IP_WIFI=""; LAST_IP_LTE=""
 [ -r "$STATE" ] && . "$STATE"
+declare -A LAST_IP=([wired]=$LAST_IP_WIRED [wifi]=$LAST_IP_WIFI [lte]=$LAST_IP_LTE)
 save_state() {
     {
         printf 'LAST_SWITCH=%s\nLATCHED_UNTIL=%s\nSWITCH_TS="%s"\nSWITCH_COUNT=%s\n' \
                "$LAST_SWITCH" "$LATCHED_UNTIL" "$SWITCH_TS" "$SWITCH_COUNT"
         printf 'LAST_ESCALATION=%s\nVERIFY_ROLE="%s"\nVERIFY_START=%s\nVERIFY_HEAD=%s\n' \
                "$LAST_ESCALATION" "$VERIFY_ROLE" "$VERIFY_START" "$VERIFY_HEAD"
-        printf 'NONE_OLDIP="%s"\nAPT_SIGNALED=%s\n' "$NONE_OLDIP" "$APT_SIGNALED"
+        printf 'NONE_OLDIP="%s"\nAPT_SIGNALED=%s\nPREV_ACTIVE="%s"\n' \
+               "$NONE_OLDIP" "$APT_SIGNALED" "$PREV_ACTIVE"
+        printf 'LAST_IP_WIRED="%s"\nLAST_IP_WIFI="%s"\nLAST_IP_LTE="%s"\n' \
+               "${LAST_IP[wired]:-}" "${LAST_IP[wifi]:-}" "${LAST_IP[lte]:-}"
     } > "$STATE.tmp" && mv "$STATE.tmp" "$STATE"
 }
 
@@ -113,6 +118,9 @@ discover_links() {
         [ -n "${IF[$r]:-}" ] || continue
         IP4[$r]=$(ip -j -4 addr show dev "${IF[$r]}" 2>/dev/null \
                   | jq -r '.[0].addr_info[0].local // empty' 2>/dev/null)
+        # remember the last known address: after a cable pull the address is
+        # gone from the iface but its dead sockets still need nudging
+        [ -n "${IP4[$r]}" ] && LAST_IP[$r]=${IP4[$r]}
         # exclude our own metric-50 override or a renewed lease's gateway is
         # never picked up
         GW[$r]=$(ip -j route show dev "${IF[$r]}" 2>/dev/null \
@@ -360,6 +368,28 @@ do_switch() {                           # $1 new role, $2 old-src ip override (N
     verify_arm "$new"
 }
 
+# Carrier-driven (ladder) transitions: an L2 failure flips routing in the
+# KERNEL (next-lowest-metric route wins) without any do_switch — but the
+# Layer-2 side effects are still owed: dead sockets pinned to the vanished
+# address must be nudged or Nimbus sits deaf on a "connected" peer set for
+# many minutes (observed live on the first physical cable-pull test, T6).
+on_ladder_transition() {                # $1 old role (may be ""), $2 new role
+    local old=$1 new=$2 t=$(now)
+    if [ -z "$old" ]; then              # cold start / state reset: align only
+        log "initial active link: ${new:-none}"
+        if [ "$new" = lte ]; then metered_on; elif [ -n "$new" ]; then metered_off; fi
+        return 0
+    fi
+    [ -z "$new" ] && { log "ladder transition: $old -> none (all defaults gone)"; return 0; }
+    log "ladder transition (carrier-driven): $old -> $new"
+    SWITCH_TS="$SWITCH_TS $t"; SWITCH_TS=${SWITCH_TS# }; SWITCH_COUNT=$((SWITCH_COUNT+1))
+    LAST_SWITCH=$t
+    nudge "${LAST_IP[$old]:-}"
+    if [ "$new" = lte ]; then metered_on; else metered_off; fi
+    [ "$new" = wired ] && rm -f "$ESC_FLAG"
+    verify_arm "$new"
+}
+
 # Latch check BEFORE executing a switch (§5.2): entering the clamp performs
 # one final reconcile to the highest-priority healthy link, then holds.
 try_switch() {                          # $1 wanted role
@@ -432,6 +462,7 @@ trap 'log "stopping — sweeping owned state"; sweep_owned; rm -f "$NONE_FLAG" "
 while :; do
     discover_links
     ACTIVE=$(current_active)
+    [ "$ACTIVE" != "$PREV_ACTIVE" ] && on_ladder_transition "$PREV_ACTIVE" "$ACTIVE"
     update_health
     reconcile_assets
     verify_tick
@@ -469,6 +500,9 @@ while :; do
         fi
     fi
 
+    PREV_ACTIVE=$ACTIVE                 # post-do_switch value: a watchdog
+                                        # switch must not re-fire the ladder
+                                        # handler next cycle
     save_state
     write_status
     sleep 5

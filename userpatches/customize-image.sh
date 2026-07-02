@@ -167,6 +167,8 @@ mkdir -p /etc/systemd/networkd.conf.d /etc/systemd/resolved.conf.d
 cp /tmp/overlay/etc/systemd/networkd.conf.d/w3p-failover.conf /etc/systemd/networkd.conf.d/
 cp /tmp/overlay/etc/systemd/resolved.conf.d/w3p-dns.conf /etc/systemd/resolved.conf.d/
 cp /tmp/overlay/etc/udev/rules.d/99-lte-modem-power.rules /etc/udev/rules.d/
+mkdir -p /etc/sysctl.d
+cp /tmp/overlay/etc/sysctl.d/99-w3p-ping.conf /etc/sysctl.d/
 #-------------------------------------------------------------------------------------------
 
 ## Add APT repository #######################################################################

@@ -147,8 +147,14 @@ EOF
 }
 
 failover_data_usage() {
-    local dev
+    local dev out
     dev=$(failover_lte_dev)
     [ -z "$dev" ] && { msg_box "Data Usage" "No USB LTE modem detected."; return; }
-    msg_box "Data Usage ($dev)" "$(vnstat -i "$dev" 2>/dev/null || echo 'vnstat has no data yet for this interface.')"
+    systemctl is-active -q vnstat 2>/dev/null || systemctl enable --now vnstat 2>/dev/null
+    if ! out=$(vnstat -i "$dev" 2>&1); then
+        # modem plugged in after the vnstat daemon started -> not in its DB yet
+        vnstat --add -i "$dev" >/dev/null 2>&1
+        out="vnstat is now tracking $dev — usage data will appear within a few minutes."
+    fi
+    msg_box "Data Usage ($dev)" "$out"
 }
