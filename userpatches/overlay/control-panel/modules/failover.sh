@@ -183,18 +183,18 @@ failover_speed_test() {
     . "$FAILOVER_CONF" 2>/dev/null
     local min_down=${MIN_DOWN_MBIT:-20} min_up=${MIN_UP_MBIT:-5}
 
-    TERM=${TERM:-linux} whiptail --infobox "Measuring $label ($dev)...\n\n1/3 latency" 10 50
+    TERM=ansi whiptail --infobox "Measuring $label ($dev)...\n\n1/3 latency" 10 50
     local lat down up down_mbit up_mbit
     lat=$(ping -I "$dev" -c 8 -i 0.3 -q 1.1.1.1 2>/dev/null | awk -F/ '/rtt/ {printf "%.0f", $5}')
 
-    TERM=${TERM:-linux} whiptail --infobox "Measuring $label ($dev)...\n\n2/3 download (50 MB)" 10 50
+    TERM=ansi whiptail --infobox "Measuring $label ($dev)...\n\n2/3 download (50 MB)" 10 50
     down=$(curl --interface "$dev" -s -o /dev/null -w "%{speed_download}" \
            "https://speed.cloudflare.com/__down?bytes=50000000" --max-time 60)
     # single retry: the endpoint occasionally hiccups with a 1-byte response
     [ "${down%.*}" -lt 10000 ] 2>/dev/null && down=$(curl --interface "$dev" -s -o /dev/null \
            -w "%{speed_download}" "https://speed.cloudflare.com/__down?bytes=50000000" --max-time 60)
 
-    TERM=${TERM:-linux} whiptail --infobox "Measuring $label ($dev)...\n\n3/3 upload (20 MB)" 10 50
+    TERM=ansi whiptail --infobox "Measuring $label ($dev)...\n\n3/3 upload (20 MB)" 10 50
     dd if=/dev/urandom of=/tmp/w3p-speed.bin bs=1M count=20 2>/dev/null
     up=$(curl --interface "$dev" -s -o /dev/null -w "%{speed_upload}" \
          -T /tmp/w3p-speed.bin "https://speed.cloudflare.com/__up" --max-time 60)
