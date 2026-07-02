@@ -337,6 +337,13 @@ verify_tick() {
     systemctl is-active -q nimbus-beacon-node 2>/dev/null || return 0
     local budget=$VERIFY_BUDGET_FAST_S head estab
     [ "$VERIFY_ROLE" = lte ] && budget=$VERIFY_BUDGET_LTE_S
+    # Never judge a beacon younger than the verify budget: right after boot
+    # (or its own restart) it legitimately has no advancing head yet —
+    # observed as a false escalation at system boot. Hold the clock instead.
+    local bpid betimes
+    bpid=$(systemctl show -p MainPID --value nimbus-beacon-node 2>/dev/null)
+    betimes=$(ps -o etimes= -p "${bpid:-0}" 2>/dev/null | tr -d ' ')
+    if [ "${betimes:-0}" -lt "$budget" ]; then VERIFY_START=$(now); return 0; fi
     head=$(curl -s --max-time 3 "$BEACON_REST/eth/v1/node/syncing" \
            | jq -r '.data.head_slot // empty' 2>/dev/null)
     estab=$(wan_estab_count "${IP4[$VERIFY_ROLE]:-}")
