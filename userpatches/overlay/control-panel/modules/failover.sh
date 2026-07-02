@@ -27,6 +27,7 @@ failover_menu() {
             "5" "WiFi backup link setup" \
             "6" "Data usage (LTE)" \
             "7" "Edit failover settings" \
+            "8" "Link speed test (wired / LTE)" \
             "0" "Back to Main Menu" \
             3>&1 1>&2 2>&3)
 
@@ -50,6 +51,7 @@ failover_menu() {
                systemctl is-active -q w3p-failover 2>/dev/null \
                    && yesno_box "Failover" "Restart the watchdog to apply the new settings?" \
                    && systemctl restart w3p-failover ;;
+            8) failover_speed_test ;;
             0|"") return ;;
         esac
     done
@@ -144,6 +146,81 @@ EOF
         fi
     fi
     rm -f "$WIFI_NETPLAN.bak"
+}
+
+# Link speed test bound to a specific interface (SO_BINDTODEVICE — the panel
+# runs as root, so the traffic REALLY takes the chosen link; tools like
+# speedtest-cli bind the source address only and leak via the default route).
+# Verdict against the documented product minimum for failover duty (Mbit/s),
+# overridable in /etc/w3p-failover.conf.
+failover_speed_test() {
+    local choice dev label is_lte=0
+    local wired="" d
+    for d in /sys/class/net/e*; do
+        [ -e "$d" ] || continue
+        case "$(basename "$(readlink -f "$d/device/driver" 2>/dev/null)" 2>/dev/null)" in
+            cdc_ether|rndis_host) ;;
+            *) wired=$(basename "$d"); break ;;
+        esac
+    done
+    local lte; lte=$(failover_lte_dev)
+    choice=$(whiptail --title "Link Speed Test" --radiolist \
+        "Which link to measure?" $TERM_HEIGHT $TERM_WIDTH 4 \
+        "wired" "Ethernet (${wired:-not found})" ON \
+        "lte"   "USB LTE modem (${lte:-not found})" OFF \
+        3>&1 1>&2 2>&3) || return
+    if [ "$choice" = lte ]; then
+        dev=$lte; label="LTE"; is_lte=1
+        [ -z "$dev" ] && { msg_box "Speed Test" "No USB LTE modem detected."; return; }
+        yesno_box "Speed Test" "This will transfer ~70 MB over the METERED LTE connection.\nContinue?" || return
+        tc qdisc show dev "$dev" 2>/dev/null | grep -qE "cake|tbf" \
+            && msg_box "Speed Test" "Note: the failover egress cap is active on $dev\n(LTE is the active WAN) — upload will show the SHAPED value."
+    else
+        dev=$wired; label="Ethernet"
+        [ -z "$dev" ] && { msg_box "Speed Test" "No wired interface found."; return; }
+    fi
+
+    . "$FAILOVER_CONF" 2>/dev/null
+    local min_down=${MIN_DOWN_MBIT:-20} min_up=${MIN_UP_MBIT:-5}
+
+    TERM=${TERM:-linux} whiptail --infobox "Measuring $label ($dev)...\n\n1/3 latency" 10 50
+    local lat down up down_mbit up_mbit
+    lat=$(ping -I "$dev" -c 8 -i 0.3 -q 1.1.1.1 2>/dev/null | awk -F/ '/rtt/ {printf "%.0f", $5}')
+
+    TERM=${TERM:-linux} whiptail --infobox "Measuring $label ($dev)...\n\n2/3 download (50 MB)" 10 50
+    down=$(curl --interface "$dev" -s -o /dev/null -w "%{speed_download}" \
+           "https://speed.cloudflare.com/__down?bytes=50000000" --max-time 60)
+    # single retry: the endpoint occasionally hiccups with a 1-byte response
+    [ "${down%.*}" -lt 10000 ] 2>/dev/null && down=$(curl --interface "$dev" -s -o /dev/null \
+           -w "%{speed_download}" "https://speed.cloudflare.com/__down?bytes=50000000" --max-time 60)
+
+    TERM=${TERM:-linux} whiptail --infobox "Measuring $label ($dev)...\n\n3/3 upload (20 MB)" 10 50
+    dd if=/dev/urandom of=/tmp/w3p-speed.bin bs=1M count=20 2>/dev/null
+    up=$(curl --interface "$dev" -s -o /dev/null -w "%{speed_upload}" \
+         -T /tmp/w3p-speed.bin "https://speed.cloudflare.com/__up" --max-time 60)
+    rm -f /tmp/w3p-speed.bin
+
+    down_mbit=$(awk -v b="${down:-0}" 'BEGIN {printf "%.1f", b*8/1000000}')
+    up_mbit=$(awk -v b="${up:-0}" 'BEGIN {printf "%.1f", b*8/1000000}')
+    local verdict="OK — meets the ${min_down}/${min_up} Mbit/s minimum for failover duty"
+    awk -v d="$down_mbit" -v u="$up_mbit" -v md="$min_down" -v mu="$min_up" \
+        'BEGIN {exit !(d<md || u<mu)}' \
+        && verdict="!! BELOW the ${min_down}/${min_up} Mbit/s minimum — an Ethereum node CANNOT stay healthy on this link.\nTry: reposition the modem (window), different carrier, external-antenna modem."
+
+    local extra=""
+    if [ $is_lte -eq 1 ]; then
+        local gw; gw=$(ip -j route show dev "$dev" 2>/dev/null | jq -r '[.[] | select(.dst=="default")][0].gateway // empty')
+        [ -n "$gw" ] && extra=$(curl -s --max-time 5 -H "Referer: http://$gw/index.html" \
+            "http://$gw/goform/goform_get_cmd_process?isTest=false&multi_data=1&cmd=signalbar,network_type,network_provider,lte_rsrp,lte_snr" \
+            | jq -r '"Signal: \(.signalbar)/5  \(.network_type) @ \(.network_provider)  RSRP \(.lte_rsrp) dBm  SNR \(.lte_snr) dB"' 2>/dev/null)
+    fi
+    msg_box "Speed Test — $label ($dev)" \
+"Download: $down_mbit Mbit/s
+Upload:   $up_mbit Mbit/s
+Latency:  ${lat:-?} ms (avg)
+${extra:+$extra
+}
+$verdict"
 }
 
 failover_data_usage() {
