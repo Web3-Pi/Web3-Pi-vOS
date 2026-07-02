@@ -130,7 +130,7 @@ apt install -y screen bpytop cryptsetup unattended-upgrades dialog
 apt install -y smartmontools fio stress-ng fastfetch # fastfetch replaces neofetch (removed from Ubuntu >= 25.x)
 # apt install -y python3-pip python3-netifaces python3-dev libpython3-dev python3-venv
 # apt install -y gcc libraspberrypi-bin screen ccze iw flashrom figlet neofetch 
-#apt install -y iproute2 iputils-ping dnsutils gawk bsdutils # for Wan Failover script
+apt install -y usb-modeswitch usb-modeswitch-data conntrack vnstat uhubctl dnsutils gawk # for Wan Failover (M5); iproute2/iputils-ping/jq/curl already in base rootfs
 #apt install -y apcupsd # For UPS support
 #--------------------------------------------------------------------------------------------
 
@@ -152,9 +152,21 @@ systemctl enable nftables
 #-------------------------------------------------------------------------------------------
 
 ## WiFi stability fix #######################################################################
-# Disable WiFi power save when wlan0 interface comes up (udev rule)
+# Disable WiFi power save when the WLAN interface comes up (udev rule)
 mkdir -p /etc/udev/rules.d
 cp /tmp/overlay/etc/udev/rules.d/99-wifi-powersave.rules /etc/udev/rules.d/
+#-------------------------------------------------------------------------------------------
+
+## Internet failover substrate (M5) #########################################################
+# Metric ladder + route-ownership + DNS strategy + modem power rules.
+# Design: web3pi_scope/notes/M5-failover-plan-v2.md §4 (Layer 0). The watchdog
+# service itself (Layer 1/2, FAILOVER-2) is installed separately, disabled by default.
+cp /tmp/overlay/etc/netplan/20-w3p-failover.yaml /etc/netplan/
+chmod 600 /etc/netplan/20-w3p-failover.yaml
+mkdir -p /etc/systemd/networkd.conf.d /etc/systemd/resolved.conf.d
+cp /tmp/overlay/etc/systemd/networkd.conf.d/w3p-failover.conf /etc/systemd/networkd.conf.d/
+cp /tmp/overlay/etc/systemd/resolved.conf.d/w3p-dns.conf /etc/systemd/resolved.conf.d/
+cp /tmp/overlay/etc/udev/rules.d/99-lte-modem-power.rules /etc/udev/rules.d/
 #-------------------------------------------------------------------------------------------
 
 ## Add APT repository #######################################################################

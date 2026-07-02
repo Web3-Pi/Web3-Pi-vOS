@@ -1,0 +1,46 @@
+# Web3 Pi — M5 internet-failover metric ladder (Layer 0 substrate).
+#
+# Design: web3pi_scope/notes/M5-failover-plan-v2.md §4. Baseline route metrics are
+# owned declaratively here; the failover watchdog only ever adds/removes an
+# override default route at metric 50 (see ManageForeignRoutes=no drop-in).
+#
+#   wired  e*            metric 100  (netplan's ethernet default, pinned explicitly)
+#   wifi   (30-w3p-wifi) metric 300  (written by control-panel at provisioning time)
+#   lte    cdc_ether/rndis modem     metric 700
+#
+# DNS: use-dns=false on every WAN + global resolvers in resolved.conf.d/w3p-dns.conf,
+# so resolution always follows the active default route instead of a dead link's
+# DHCP resolver (geth's EIP-1459 DNS discovery must keep working on LTE).
+#
+# NOTE on stanza id "00-lte-modem": netplan emits one .network file per id as
+# 10-netplan-<id>.network and systemd-networkd applies the FIRST file that matches
+# a device (lexicographic order). The modem's enx*/usb0 name also matches the "e*"
+# glob in Armbian's 10-dhcp-all-interfaces.yaml, so the modem stanza id must sort
+# BEFORE "all-eth-interfaces" — "00-lte-modem" does ("0" < "l"). Verified in T0b.
+
+network:
+  version: 2
+  renderer: networkd
+  ethernets:
+    # Override of Armbian's stanza (same id => merged, our keys win): wired rung.
+    all-eth-interfaces:
+      match:
+        name: "e*"
+      dhcp4: true
+      dhcp6: false
+      dhcp4-overrides:
+        route-metric: 100
+        use-dns: false
+    # USB LTE modem (HiLink behavior class: MF79U cdc_ether, some firmwares rndis,
+    # Quectel in ECM mode). Matched by DRIVER, never by name or gateway address
+    # (192.168.0.1 collides with common home LANs) — plan v2 §5.6.
+    00-lte-modem:
+      match:
+        driver: ["cdc_ether", "rndis_host"]
+      dhcp4: true
+      dhcp6: false
+      optional: true
+      mtu: 1400
+      dhcp4-overrides:
+        route-metric: 700
+        use-dns: false

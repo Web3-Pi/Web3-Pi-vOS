@@ -1,0 +1,6 @@
+# Web3 Pi — M5 internet-failover: keep USB LTE modems out of USB autosuspend.
+# Idle is the failover steady state; autosuspend on idle cdc_ether modems causes
+# silent drops/re-enumeration (plan v2 §4.6). Scoped to known modem vendors:
+# 19d2 = ZTE (MF79U), 2c7c = Quectel (EC25/EG25 in ECM mode).
+ACTION=="add", SUBSYSTEM=="usb", ATTR{idVendor}=="19d2", TEST=="power/control", ATTR{power/control}="on"
+ACTION=="add", SUBSYSTEM=="usb", ATTR{idVendor}=="2c7c", TEST=="power/control", ATTR{power/control}="on"

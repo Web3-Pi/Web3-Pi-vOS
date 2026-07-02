@@ -1,2 +1,4 @@
-# WiFi stability fix - disable power save when wlan0 comes up
-ACTION=="add", SUBSYSTEM=="net", KERNEL=="wlan0", RUN+="/usr/sbin/iw dev wlan0 set power_save off"
+# WiFi stability fix - disable power save when the WLAN interface comes up.
+# Match wl* (not a literal wlan0): on resolute/6.18 predictable naming yields
+# e.g. wld0 on RPi5, which made the old wlan0-only rule a silent no-op.
+ACTION=="add", SUBSYSTEM=="net", KERNEL=="wl*", RUN+="/usr/sbin/iw dev %k set power_save off"
