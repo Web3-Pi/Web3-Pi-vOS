@@ -1,0 +1,23 @@
+# Web3 Pi Staking Configuration
+
+# Network: hoodi, holesky, or mainnet
+NETWORK=hoodi
+
+# Geth P2P port (TCP/UDP)
+GETH_PORT=30303
+
+# Nimbus P2P port (TCP/UDP)
+NIMBUS_PORT=9000
+
+# NOTE: If you change ports, update /etc/nftables.conf:
+#   Change 'dport <old_port>' to 'dport <new_port>'
+#   sudo systemctl restart nftables
+#   sudo systemctl daemon-reload
+#   sudo systemctl restart geth nimbus-beacon-node
+
+# Validator Configuration
+# Fee recipient address for block rewards (REQUIRED for validator)
+FEE_RECIPIENT=0x0000000000000000000000000000000000000000
+
+# Graffiti message (max 32 characters, visible in proposed blocks)
+GRAFFITI=Web3Pi

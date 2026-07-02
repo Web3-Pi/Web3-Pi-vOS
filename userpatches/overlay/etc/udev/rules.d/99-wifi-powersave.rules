@@ -1,0 +1,2 @@
+# WiFi stability fix - disable power save when wlan0 comes up
+ACTION=="add", SUBSYSTEM=="net", KERNEL=="wlan0", RUN+="/usr/sbin/iw dev wlan0 set power_save off"

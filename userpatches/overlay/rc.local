@@ -1,0 +1,176 @@
+#!/bin/bash
+
+echo "[rc.local] - start at $(date '+%Y-%m-%d %H:%M:%S')"
+
+# Function: echolog
+# Description: Logs messages with a timestamp prefix. If no arguments are provided,
+#              reads from stdin and logs each line. Outputs to console and appends to $LOGI file.
+LOGI="/opt/web3pi/logs/web3pi.log"
+INIT_FLAG_RC_LOCAL="/root/.rc.local.firstrun.done"
+echolog(){
+    if [ $# -eq 0 ]
+    then cat - | while read -r message
+        do
+                echo "$(date +"[%F %T %Z] -") $message" | tee -a $LOGI
+            done
+    else
+        echo -n "$(date +'[%F %T %Z]') - " | tee -a $LOGI
+        echo $* | tee -a $LOGI
+    fi
+}
+
+echolog " "
+echolog "RC.LOCAL START - RC.LOCAL START - RC.LOCAL START - RC.LOCAL START - RC.LOCAL START - RC.LOCAL START - RC.LOCAL START"
+echolog " "
+timedatectl | echolog
+
+# Function: set_install_stage
+# Description: A function that saves the installation stage to the file /root/.install_stage. The file stores a number as text. The beginning of the installation is marked by 0, and the higher the number, the further along the installation process is. A value of 100 indicates the installation is complete.
+set_install_stage() {
+    local number=$1
+    echo $number > /root/.install_stage
+}
+
+# If the installation stage file does not exist, create it and initialize it with the value "0".
+if [ ! -f "/root/.install_stage" ]; then
+    echolog "/root/.install_stage not exist"
+    touch /root/.install_stage
+    set_install_stage "0" # initial value
+    echolog "/root/.install_stage file created and initialized to 0"
+fi
+
+# Function: get_install_stage
+# Description: A function that retrieves the installation stage from the file /root/.install_stage.
+get_install_stage() {
+    local file_path=$1
+    if [ -f "/root/.install_stage" ]; then
+        local number=$(cat "/root/.install_stage")
+        echo $number
+    else
+        echolog "File /root/.install_stage does not exist."
+        return 0
+    fi
+}
+
+checkServerUrl="https://github.com"
+check_n=0
+check_max=10
+
+# Use curl instead of ping (ICMP may be blocked by firewall)
+curl -s --head --connect-timeout 5 "$checkServerUrl" > /dev/null 2>&1
+while [ $? -ne 0 ]; do
+    echolog "$(date): test connection [$check_n/$check_max] - ${checkServerUrl}"
+    sleep 6
+    let "check_n+=1"
+    [[ ${check_n} -gt ${check_max} ]] && echolog "Stopping the installation, internet access is necessary" && exit 1
+    curl -s --head --connect-timeout 5 "$checkServerUrl" > /dev/null 2>&1
+done
+
+echolog "$(date): Connected - ${checkServerUrl}"
+
+
+# NOTE: LUKS partition for /home/signer requires manual unlock
+# Use: sudo /opt/web3pi/unlock-luks.sh
+# Then: sudo /opt/web3pi/start-validator.sh
+#---------------------------------------------------------------------------------------
+
+if [ "$(get_install_stage)" -eq 0 ]; then
+    echo "[rc.local] - Wykonywanie operacji tylko przy pierwszym uruchomieniu [rc.local]..."
+
+    echolog "[rc.local] - Sync time with NTP server (chronyd -q)"
+    chronyd -q
+    timedatectl | echolog
+
+    ## ACCOUNT CONFIGURATION ################################################################
+    echo "[install.sh] - Account configuration" "Configure account"
+
+    # Finalize 'ethereum' user setup after first boot
+    echo "[rc.local] Setting up ethereum user home and permissions"
+
+    # Create home directory for ethereum user
+    mkdir -p /home/ethereum
+    chown -R ethereum:ethereum /home/ethereum
+    chmod 750 /home/ethereum
+
+    # Create symlink to control-panel in ethereum home
+    ln -sf /opt/web3pi/control-panel.sh /home/ethereum/control-panel.sh
+    chown -h ethereum:ethereum /home/ethereum/control-panel.sh
+
+    # NOTE: /home/signer will be created on LUKS partition during LUKS setup below
+    # NOTE: Group memberships (sudo, netdev, etc.) are now set at build-time in customize-image.sh
+
+    # Force password change on first login (optional)
+    chage -d 0 ethereum
+    #----------------------------------------------------------------------------------------
+
+    # Wait for apt locks to be released
+    wait_for_apt() {
+        local max_wait=120
+        local waited=0
+        while fuser /var/lib/dpkg/lock-frontend /var/cache/debconf/config.dat >/dev/null 2>&1; do
+            if [ $waited -ge $max_wait ]; then
+                echolog "Timeout waiting for apt lock after ${max_wait}s"
+                return 1
+            fi
+            echolog "Waiting for apt lock to be released..."
+            sleep 5
+            waited=$((waited + 5))
+        done
+        return 0
+    }
+
+    # Setup unattended upgrades
+    wait_for_apt && dpkg-reconfigure --priority=low unattended-upgrades
+
+    ## LUKS info - setup is now manual ########################################################
+    echo ""
+    echo "============================================================"
+    echo "  VALIDATOR SETUP REQUIRED"
+    echo "============================================================"
+    echo ""
+    echo "  1. Create encrypted storage (one-time):"
+    echo "       sudo /opt/web3pi/setup-luks.sh"
+    echo ""
+    echo "  2. After each reboot, unlock storage:"
+    echo "       sudo /opt/web3pi/unlock-luks.sh"
+    echo ""
+    echo "  3. Then start the validator:"
+    echo "       sudo /opt/web3pi/start-validator.sh"
+    echo ""
+    echo "============================================================"
+    echo ""
+    #------------------------------------------------------------------------------------------
+
+    # Zapisz znacznik, że operacje zostały wykonane
+    touch "$INIT_FLAG_RC_LOCAL"
+    set_install_stage 1
+fi
+
+if [ "$(get_install_stage)" -eq 100 ]; then
+  echo "[rc.local] - Installation completed"
+  sleep 2
+elif [ "$(get_install_stage)" -ge 1 ]; then
+  : # placeholder for future installation script
+#  echo "[rc.local] - Run main installation script (.install.sh)"
+#  /opt/web3pi/.install.sh
+fi
+
+# Display welcome message with connection info
+echo ""
+echo "============================================================"
+echo "  Web3 Pi Staking - System Ready"
+echo "============================================================"
+echo ""
+echo "  Hostname: $(hostname)"
+echo "  IP Address: $(hostname -I | awk '{print $1}')"
+echo ""
+echo "  To manage your node, run:"
+echo "      sudo ./control-panel.sh"
+echo "  or:"
+echo "      sudo /opt/web3pi/control-panel.sh"
+echo ""
+echo "============================================================"
+echo ""
+
+echo "[rc.local] - exit 0 at $(date '+%Y-%m-%d %H:%M:%S')"
+exit 0

@@ -1,0 +1,12 @@
+[Unit]
+Description=Generate SSH host keys if missing
+Before=ssh.service sshd.service
+ConditionPathExists=!/etc/ssh/ssh_host_ed25519_key
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/sbin/dpkg-reconfigure -f noninteractive openssh-server
+
+[Install]
+WantedBy=multi-user.target

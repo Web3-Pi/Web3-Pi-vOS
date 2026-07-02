@@ -1,0 +1,41 @@
+[Unit]
+Description=Nimbus Validator Client
+Documentation=https://nimbus.guide/
+After=network-online.target
+Wants=network-online.target
+
+# This service should only be started manually via unlock-validator.sh
+# It requires the LUKS partition to be mounted first
+
+[Service]
+Type=simple
+User=signer
+Group=signer
+Restart=on-failure
+RestartSec=10
+
+# Working directory is signer's home (on LUKS)
+WorkingDirectory=/home/signer
+
+# Environment
+Environment=HOME=/home/signer
+EnvironmentFile=/opt/web3pi/config
+
+# Nimbus validator client command
+ExecStart=/usr/bin/nimbus_validator_client \
+    --data-dir=/home/signer/keys \
+    --beacon-node=http://127.0.0.1:5052 \
+    --suggested-fee-recipient=${FEE_RECIPIENT} \
+    --graffiti=${GRAFFITI} \
+    --log-level=INFO
+
+# Security hardening
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=no
+ReadWritePaths=/home/signer
+
+[Install]
+# Not enabled by default - started manually after LUKS unlock
+WantedBy=multi-user.target
