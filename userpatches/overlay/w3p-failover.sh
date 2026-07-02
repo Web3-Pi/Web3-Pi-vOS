@@ -195,6 +195,14 @@ update_health() {
         LAST_PROBE[$r]=$t
         if probe_link "$r"; then
             OK_SINCE[$r]=${OK_SINCE[$r]:-$t}; FAIL_SINCE[$r]=""; HEALTH[$r]=up
+        elif [ "$r" = "$ACTIVE" ] && chain_alive_recently; then
+            # probes drowned in a saturated link, but the chain is moving —
+            # the link is alive; don't demote (and don't spam the log)
+            if [ $(( t - CHAIN_VETO_LOG )) -ge 60 ]; then
+                log "active-link probe failed but chain head is advancing — keeping $r"
+                CHAIN_VETO_LOG=$t
+            fi
+            OK_SINCE[$r]=${OK_SINCE[$r]:-$t}; FAIL_SINCE[$r]=""; HEALTH[$r]=up
         else
             FAIL_SINCE[$r]=${FAIL_SINCE[$r]:-$t}; OK_SINCE[$r]=""; HEALTH[$r]=down
         fi
@@ -210,6 +218,21 @@ update_health() {
         OK_SINCE[wifi]=""; HEALTH[wifi]=down
     fi
 }
+
+# Chain-liveness backstop for the ACTIVE link: a node in catch-up saturates
+# LTE, ICMP probes drown in the queue and false-fail — but if the beacon's
+# head slot is advancing, the link self-evidently carries traffic. Sampled
+# once per cycle from loopback (cheap), used to veto active-link demotion.
+CHAIN_HEAD=0; CHAIN_HEAD_TS=0; CHAIN_VETO_LOG=0
+chain_tick() {
+    systemctl is-active -q nimbus-beacon-node 2>/dev/null || return 0
+    local h; h=$(curl -s --max-time 2 "$BEACON_REST/eth/v1/node/syncing" \
+                 | jq -r '.data.head_slot // 0' 2>/dev/null)
+    if [ "${h:-0}" -gt "$CHAIN_HEAD" ] 2>/dev/null; then
+        CHAIN_HEAD=$h; CHAIN_HEAD_TS=$(now)
+    fi
+}
+chain_alive_recently() { [ $(( $(now) - CHAIN_HEAD_TS )) -lt 30 ]; }
 
 link_failed_long() { local r=$1; [ -n "${FAIL_SINCE[$r]:-}" ] && [ $(( $(now) - FAIL_SINCE[$r] )) -ge $DEMOTE_AFTER_S ]; }
 link_ok_long()     { local r=$1; [ "${HEALTH[$r]:-}" = up ] && [ -n "${OK_SINCE[$r]:-}" ] && [ $(( $(now) - OK_SINCE[$r] )) -ge $PROMOTE_AFTER_S ]; }
@@ -356,6 +379,11 @@ flap_count() { local c=0 s; for s in $SWITCH_TS; do c=$((c+1)); done; echo $c; }
 do_switch() {                           # $1 new role, $2 old-src ip override (NONE exit)
     local new=$1 old=$ACTIVE oldip=${2:-} t=$(now)
     [ -z "$oldip" ] && [ -n "$old" ] && oldip=${IP4[$old]:-}
+    # Same-link recovery (ALL-DOWN -> the same rung): the sockets pinned to
+    # this address are the ones we want to KEEP. Nudging them repeatedly
+    # zeroed Nimbus's freshly rebuilt peer set on every probe blip (observed
+    # live during the second physical cable test).
+    [ -n "$oldip" ] && [ "$oldip" = "${IP4[$new]:-}" ] && oldip=""
     if [ "$new" = wired ]; then clear_override; else apply_override "$new" || return 1; fi
     SWITCH_TS="$SWITCH_TS $t"; SWITCH_TS=${SWITCH_TS# }; SWITCH_COUNT=$((SWITCH_COUNT+1))
     log "switch: ${old:-ladder} -> $new (wired=${HEALTH[wired]:-?} wifi=${HEALTH[wifi]:-?} lte=${HEALTH[lte]:-?})"
@@ -463,6 +491,7 @@ while :; do
     discover_links
     ACTIVE=$(current_active)
     [ "$ACTIVE" != "$PREV_ACTIVE" ] && on_ladder_transition "$PREV_ACTIVE" "$ACTIVE"
+    chain_tick
     update_health
     reconcile_assets
     verify_tick
