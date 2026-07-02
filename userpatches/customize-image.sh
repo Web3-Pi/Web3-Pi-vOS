@@ -163,8 +163,11 @@ echo 'deb https://apt.status.im/nimbus all main' | tee /etc/apt/sources.list.d/n
 # Import the GPG key
 curl https://apt.status.im/pubkey.asc -o /etc/apt/trusted.gpg.d/apt-status-im.asc
 
-# Ethereum PPA for Geth
-add-apt-repository -y ppa:ethereum/ethereum 
+# Ethereum PPA for Geth — pinned to noble (LTS): the PPA does not publish 'resolute',
+# so add-apt-repository's auto-detected suite 404s. Geth from the LTS build runs fine
+# on a newer userspace. -n = install key + sources file only, skip the internal apt update.
+add-apt-repository -y -n ppa:ethereum/ethereum
+sed -i 's/^Suites:.*/Suites: noble/' /etc/apt/sources.list.d/ethereum-ubuntu-ethereum*.sources
 
 apt-get update     # Update the package list to include the new repositories
 #--------------------------------------------------------------------------------------------
