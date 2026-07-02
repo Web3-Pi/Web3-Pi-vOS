@@ -1,0 +1,20 @@
+[Unit]
+Description=Web3 Pi internet failover watchdog (Ethernet -> WiFi -> USB LTE)
+Documentation=https://github.com/Web3-Pi/Web3-Pi-vOS
+After=systemd-networkd.service systemd-resolved.service
+Wants=systemd-networkd.service
+
+[Service]
+Type=simple
+ExecStart=/usr/local/sbin/w3p-failover.sh
+# Belt-and-suspenders sweep: the TERM trap cleans up on graceful stop; this
+# catches SIGKILL/crash-exit paths too. Disabling the watchdog must really
+# return the box to the bare metric ladder (no stale metric-50 override).
+ExecStopPost=/usr/local/sbin/w3p-failover.sh cleanup
+Restart=on-failure
+RestartSec=5
+# Root is required: SO_BINDTODEVICE probes, ss -K (SOCK_DESTROY), route
+# overrides, tc, conntrack. The daemon never touches nimbus-validator.
+
+[Install]
+WantedBy=multi-user.target

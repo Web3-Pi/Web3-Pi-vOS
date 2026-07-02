@@ -205,6 +205,17 @@ cp /tmp/overlay/nimbus-validator.service /etc/systemd/system/nimbus-validator.se
 # Don't enable - started manually via unlock-validator.sh
 #--------------------------------------------------------------------------------------------
 
+## Internet failover watchdog (M5) ##########################################################
+# Layer 1/2 daemon; substrate (netplan/networkd/resolved/udev) installed above.
+# Disabled by default — user activates via control-panel (Internet Failover menu).
+# Root-owned locations: /opt/web3pi is ethereum-writable, and this script runs
+# as root (a swappable script/config there would be a privilege escalation).
+install -o root -g root -m 755 /tmp/overlay/w3p-failover.sh /usr/local/sbin/w3p-failover.sh
+install -o root -g root -m 600 /tmp/overlay/failover.conf /etc/w3p-failover.conf
+cp /tmp/overlay/w3p-failover.service /etc/systemd/system/w3p-failover.service
+# systemctl enable w3p-failover.service
+#--------------------------------------------------------------------------------------------
+
 ## LUKS setup script ########################################################################
 # One-time script to create LUKS partition for validator keys
 cp /tmp/overlay/setup-luks.sh /opt/web3pi/setup-luks.sh
