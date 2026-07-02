@@ -224,14 +224,30 @@ $verdict"
 }
 
 failover_data_usage() {
-    local dev out
+    local dev line live_rx live_tx
     dev=$(failover_lte_dev)
     [ -z "$dev" ] && { msg_box "Data Usage" "No USB LTE modem detected."; return; }
     systemctl is-active -q vnstat 2>/dev/null || systemctl enable --now vnstat 2>/dev/null
-    if ! out=$(vnstat -i "$dev" 2>&1); then
+    # live kernel counters: always current, reset on boot/re-plug
+    live_rx=$(numfmt --to=iec-i --suffix=B "$(cat /sys/class/net/$dev/statistics/rx_bytes 2>/dev/null || echo 0)")
+    live_tx=$(numfmt --to=iec-i --suffix=B "$(cat /sys/class/net/$dev/statistics/tx_bytes 2>/dev/null || echo 0)")
+    if ! line=$(vnstat --oneline -i "$dev" 2>/dev/null); then
         # modem plugged in after the vnstat daemon started -> not in its DB yet
         vnstat --add -i "$dev" >/dev/null 2>&1
-        out="vnstat is now tracking $dev — usage data will appear within a few minutes."
+        msg_box "Data Usage ($dev)" \
+"Live now (kernel counters, since boot/plug-in):
+  RX $live_rx    TX $live_tx
+
+vnstat is now tracking $dev — daily/monthly history
+will appear here within ~5 minutes."
+        return
     fi
-    msg_box "Data Usage ($dev)" "$out"
+    # vnstat --oneline: 3=today's date 4=rx 5=tx 6=total | 8=month 9=rx 10=tx 11=total
+    msg_box "Data Usage ($dev)" "$(echo "$line" | awk -F';' '{
+        printf "Live now (kernel counters, since boot/plug-in):\n"
+        printf "  RX %-12s TX %s\n\n", "'"$live_rx"'", "'"$live_tx"'"
+        printf "vnstat history — database refreshes every 5 min:\n"
+        printf "  Today (%s):\n    RX %-12s TX %-12s = %s\n", $3, $4, $5, $6
+        printf "  Month (%s):\n    RX %-12s TX %-12s = %s\n", $8, $9, $10, $11
+    }')"
 }
