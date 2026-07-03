@@ -260,13 +260,21 @@ failover_speed_test() {
             *) wired=$(basename "$d"); break ;;
         esac
     done
-    local lte; lte=$(failover_lte_dev)
+    local lte wifi; lte=$(failover_lte_dev); wifi=$(failover_wifi_iface)
     choice=$(whiptail --title "Link Speed Test" --radiolist \
-        "Which link to measure?" $TERM_HEIGHT $TERM_WIDTH 4 \
+        "Which link to measure?" $TERM_HEIGHT $TERM_WIDTH 5 \
         "wired" "Ethernet (${wired:-not found})" ON \
+        "wifi"  "WiFi (${wifi:-not found})" OFF \
         "lte"   "USB LTE modem (${lte:-not found})" OFF \
         3>&1 1>&2 2>&3) || return
-    if [ "$choice" = lte ]; then
+    if [ "$choice" = wifi ]; then
+        dev=$wifi; label="WiFi"
+        [ -z "$dev" ] && { msg_box "Speed Test" "No WiFi interface found."; return; }
+        if [ -z "$(ip -j -4 addr show dev "$dev" 2>/dev/null | jq -r '.[0].addr_info[0].local // empty')" ]; then
+            msg_box "Speed Test" "WiFi is not connected.\nConfigure it first: Internet Failover -> WiFi backup link."
+            return
+        fi
+    elif [ "$choice" = lte ]; then
         dev=$lte; label="LTE"; is_lte=1
         [ -z "$dev" ] && { msg_box "Speed Test" "No USB LTE modem detected."; return; }
         yesno_box "Speed Test" "This will transfer ~70 MB over the METERED LTE connection.\nContinue?" || return
@@ -305,6 +313,11 @@ failover_speed_test() {
         && verdict="!! BELOW the ${min_down}/${min_up} Mbit/s minimum — an Ethereum node CANNOT stay healthy on this link.\nTry: reposition the modem (window), different carrier, external-antenna modem."
 
     local extra=""
+    if [ "$choice" = wifi ]; then
+        extra=$(iw dev "$dev" link 2>/dev/null | awk -F': ' '
+            /SSID/ {ssid=$2} /signal/ {sig=$2} /rx bitrate/ {rx=$2}
+            END {if (ssid) printf "WiFi: %s  signal %s  rx %s", ssid, sig, rx}')
+    fi
     if [ $is_lte -eq 1 ]; then
         local gw; gw=$(ip -j route show dev "$dev" 2>/dev/null | jq -r '[.[] | select(.dst=="default")][0].gateway // empty')
         [ -n "$gw" ] && extra=$(curl -s --max-time 5 -H "Referer: http://$gw/index.html" \
