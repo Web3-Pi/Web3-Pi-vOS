@@ -193,6 +193,17 @@ failover_wifi_setup() {
     case "$ssid$psk" in
         *'"'*|*'\'*) msg_box "WiFi Backup" "SSID/password must not contain quote (\") or backslash (\\) characters."; return ;;
     esac
+    # band preference: wpa_supplicant picks the LOUDEST BSS, which on a
+    # dual-band AP is almost always 2.4 GHz — offer to pin 5 GHz for speed
+    local band
+    band=$(whiptail --title "WiFi Backup Link" --radiolist \
+        "Band preference for '$ssid':" 12 70 3 \
+        "auto"   "Automatic (strongest signal — usually 2.4 GHz)" ON \
+        "5GHz"   "Prefer 5 GHz (faster; needs decent signal)" OFF \
+        "2.4GHz" "Force 2.4 GHz (max range)" OFF \
+        3>&1 1>&2 2>&3) || return
+    local band_line=""
+    [ "$band" != auto ] && band_line="          band: $band"
     # keep the last working config restorable — netplan validates only in place
     [ -f "$WIFI_NETPLAN" ] && cp -p "$WIFI_NETPLAN" "$WIFI_NETPLAN.bak"
     install -m 600 /dev/null "$WIFI_NETPLAN"
@@ -211,6 +222,7 @@ network:
       access-points:
         "$ssid":
           password: "$psk"
+${band_line}
 EOF
     if netplan generate 2>/tmp/netplan.err; then
         # AP-roam carrier blips must not withdraw the rung (netplan has no
