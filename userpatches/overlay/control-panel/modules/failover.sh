@@ -89,7 +89,7 @@ failover_modem_info() {
     [ -z "$dev" ] && { msg_box "Modem" "No USB LTE modem detected (cdc_ether/rndis)."; return; }
     gw=$(ip -j route show dev "$dev" 2>/dev/null | jq -r '[.[] | select(.dst=="default")][0].gateway // empty')
     [ -z "$gw" ] && { msg_box "Modem" "Modem $dev present but no gateway (no DHCP lease?)."; return; }
-    out=$(curl -s --max-time 5 -H "Referer: http://$gw/index.html" \
+    out=$(curl --interface "$dev" -s --max-time 5 -H "Referer: http://$gw/index.html" \
         "http://$gw/goform/goform_get_cmd_process?isTest=false&multi_data=1&cmd=signalbar,network_type,network_provider,ppp_status,pin_status,monthly_rx_bytes,monthly_tx_bytes" \
         | jq -r 'to_entries | map("\(.key): \(.value)") | join("\n")' 2>/dev/null)
     msg_box "Modem ($dev via $gw)" "${out:-API not reachable — non-ZTE modem or web UI password required.}"
@@ -332,7 +332,7 @@ failover_speed_test() {
     fi
     if [ $is_lte -eq 1 ]; then
         local gw; gw=$(ip -j route show dev "$dev" 2>/dev/null | jq -r '[.[] | select(.dst=="default")][0].gateway // empty')
-        [ -n "$gw" ] && extra=$(curl -s --max-time 5 -H "Referer: http://$gw/index.html" \
+        [ -n "$gw" ] && extra=$(curl --interface "$dev" -s --max-time 5 -H "Referer: http://$gw/index.html" \
             "http://$gw/goform/goform_get_cmd_process?isTest=false&multi_data=1&cmd=signalbar,network_type,network_provider,lte_rsrp,lte_snr" \
             | jq -r '"Signal: \(.signalbar)/5  \(.network_type) @ \(.network_provider)  RSRP \(.lte_rsrp) dBm  SNR \(.lte_snr) dB"' 2>/dev/null)
     fi
