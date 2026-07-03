@@ -35,8 +35,10 @@ ExecStart=/usr/bin/nimbus_beacon_node \
     --enr-auto-update
     
 # Soft memory ceiling: under prolonged non-finality the beacon's memory can
-# balloon; reclaim pressure beats the OOM-killer picking it (M5 plan v2 §5.9)
-MemoryHigh=4G
+# balloon; reclaim pressure beats the OOM-killer picking it (M5 plan v2 §5.9).
+# Percentage of physical RAM: product target is the 16 GB RPi5 (-> 8 GB ceiling),
+# dev benches on 8 GB units get 4 GB automatically.
+MemoryHigh=50%
 
 # Security hardening
 NoNewPrivileges=yes
