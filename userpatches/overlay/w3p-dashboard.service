@@ -1,0 +1,28 @@
+# Web3 Pi live dashboard on the physical HDMI console (tty1).
+# Disabled by default — toggled from the control panel (Monitoring menu).
+# Replaces the tty1 login prompt while enabled; SSH logins are unaffected.
+# Kiosk mode: q/Ctrl-C are ignored (nothing useful would follow on tty1);
+# disable from the control panel or: systemctl disable --now w3p-dashboard
+[Unit]
+Description=Web3 Pi live dashboard (HDMI console)
+After=systemd-user-sessions.service getty-pre.target getty@tty1.service
+Conflicts=getty@tty1.service
+
+[Service]
+ExecStart=/usr/bin/python3 /usr/local/share/w3p-dashboard/w3p-dashboard.py
+StandardInput=tty
+StandardOutput=tty
+# tracebacks must reach `journalctl -u w3p-dashboard` (tty gets wiped on
+# TTYReset+restart); the curses UI itself still paints via stdout/tty
+StandardError=journal
+TTYPath=/dev/tty1
+TTYReset=yes
+TTYVHangup=yes
+TTYVTDisallocate=yes
+Environment=TERM=linux
+Environment=W3P_KIOSK=1
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

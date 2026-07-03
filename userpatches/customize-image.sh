@@ -247,6 +247,21 @@ chmod +x /opt/web3pi/control-panel/lib/*.sh
 chmod +x /opt/web3pi/control-panel/modules/*.sh
 #--------------------------------------------------------------------------------------------
 
+## Live TUI dashboard ########################################################################
+# Fullscreen console dashboard (Ethereum sync/peers, WAN failover, resources).
+# Launched from the control panel (Monitoring), standalone via `w3p-dashboard`,
+# or on the HDMI console via the (disabled by default) w3p-dashboard.service.
+# Root-owned location on purpose: the HDMI service runs it as root, and
+# /opt/web3pi is ethereum-writable (same reasoning as w3p-failover.sh above).
+mkdir -p /usr/local/share/w3p-dashboard
+cp -r /tmp/overlay/dashboard/. /usr/local/share/w3p-dashboard/
+find /usr/local/share/w3p-dashboard -name __pycache__ -type d -exec rm -rf {} + 2>/dev/null || true
+chown -R root:root /usr/local/share/w3p-dashboard
+chmod 755 /usr/local/share/w3p-dashboard/w3p-dashboard.py
+ln -sf /usr/local/share/w3p-dashboard/w3p-dashboard.py /usr/local/bin/w3p-dashboard
+cp /tmp/overlay/w3p-dashboard.service /etc/systemd/system/w3p-dashboard.service
+#--------------------------------------------------------------------------------------------
+
 ## CPU Frequency Safety Service (Auto OC) ###################################################
 # Disable Armbian's hardware optimization service - it would override our
 # CPU frequency clamp by reading /etc/default/cpufrequtils with CPUMAX values.

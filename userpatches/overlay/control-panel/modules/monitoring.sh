@@ -8,6 +8,8 @@ monitoring_menu() {
         CHOICE=$(whiptail --title "Monitoring" \
             --menu "Real-time system monitoring:" \
             $TERM_HEIGHT $TERM_WIDTH $LIST_HEIGHT \
+            "D" "Live Dashboard (fullscreen TUI)" \
+            "H" "Dashboard on HDMI console (autostart)" \
             "1" "Sync Status (Geth & Nimbus)" \
             "2" "Peer Connections" \
             "3" "Resource Usage (RAM, CPU)" \
@@ -18,6 +20,8 @@ monitoring_menu() {
             3>&1 1>&2 2>&3)
 
         case $CHOICE in
+            D) monitoring_dashboard ;;
+            H) monitoring_dashboard_hdmi ;;
             1) monitoring_sync_status ;;
             2) monitoring_peers ;;
             3) monitoring_resources ;;
@@ -27,6 +31,45 @@ monitoring_menu() {
             0|"") return ;;
         esac
     done
+}
+
+# Fullscreen live dashboard (Ethereum sync/peers, failover, net, resources).
+# Standalone program — also runnable directly as: w3p-dashboard
+DASHBOARD_PY=/usr/local/share/w3p-dashboard/w3p-dashboard.py
+
+monitoring_dashboard() {
+    if [ ! -f "$DASHBOARD_PY" ]; then
+        msg_box "Dashboard" "Dashboard not installed at $DASHBOARD_PY."
+        return
+    fi
+    clear
+    python3 "$DASHBOARD_PY"
+    clear
+}
+
+# Toggle the dashboard on the physical HDMI console (tty1). While enabled it
+# replaces the tty1 login prompt (Conflicts=getty@tty1); SSH is unaffected.
+monitoring_dashboard_hdmi() {
+    local state="disabled"
+    systemctl is-enabled -q w3p-dashboard 2>/dev/null && state="enabled"
+    if [ "$state" = "enabled" ]; then
+        if yesno_box "HDMI Dashboard" "Dashboard autostart on the HDMI console is ENABLED.\n\nDisable it and restore the tty1 login prompt?"; then
+            systemctl disable --now w3p-dashboard 2>/dev/null
+            systemctl start getty@tty1 2>/dev/null
+            msg_box "HDMI Dashboard" "Disabled. Login prompt restored on tty1."
+        fi
+    else
+        # starting the dashboard stops getty@tty1 (Conflicts=) — if THIS
+        # session runs on tty1, enabling would kill it mid-flow; say so
+        if [ "$(tty 2>/dev/null)" = "/dev/tty1" ]; then
+            yesno_box "HDMI Dashboard" "You are on tty1 — enabling the dashboard will TAKE OVER this console and END this session immediately.\n\n(To keep working, enable it from SSH instead.)\n\nContinue anyway?" || return
+        elif ! yesno_box "HDMI Dashboard" "Show the live dashboard on the physical HDMI screen (tty1)?\n\nIt replaces the tty1 login prompt while enabled.\nSSH access is unaffected."; then
+            return
+        fi
+        systemctl enable --now w3p-dashboard \
+            && msg_box "HDMI Dashboard" "Enabled — the dashboard is now on the HDMI console." \
+            || msg_box "HDMI Dashboard" "FAILED to start — check: journalctl -u w3p-dashboard"
+    fi
 }
 
 # Helper: Detect Nimbus backfill progress from journal logs

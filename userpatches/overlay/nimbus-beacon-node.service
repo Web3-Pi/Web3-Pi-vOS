@@ -34,6 +34,10 @@ ExecStart=/usr/bin/nimbus_beacon_node \
     --udp-port=${NIMBUS_PORT} \
     --enr-auto-update
     
+# Soft memory ceiling: under prolonged non-finality the beacon's memory can
+# balloon; reclaim pressure beats the OOM-killer picking it (M5 plan v2 §5.9)
+MemoryHigh=4G
+
 # Security hardening
 NoNewPrivileges=yes
 PrivateTmp=yes
