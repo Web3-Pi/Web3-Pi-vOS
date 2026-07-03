@@ -128,6 +128,38 @@ discover_links() {
     done
 }
 
+# Subnet-collision preflight (§5.6): backup links MUST use distinct subnets.
+# The MF79U's LAN is 192.168.0.0/24 — also the default of many home routers.
+# Same connected subnet on two links makes same-IP destinations (both
+# gateways are 192.168.0.1!) interface-ambiguous for unbound traffic.
+# We detect and ALARM (status.json + log); per-link-bound probes keep
+# working either way, but the config is documented as unsupported.
+COLLISION=""; COLLISION_LOGGED=""
+declare -A SUBNET_OF
+detect_collision() {
+    local r dst owner
+    COLLISION=""; SUBNET_OF=()
+    for r in wired wifi lte; do
+        [ -n "${IF[$r]:-}" ] && [ -n "${IP4[$r]:-}" ] || continue
+        for dst in $(ip -j -4 route show dev "${IF[$r]}" 2>/dev/null \
+                     | jq -r '.[] | select(.protocol=="kernel") | .dst' 2>/dev/null); do
+            owner=${SUBNET_OF[$dst]:-}
+            if [ -n "$owner" ] && [ "$owner" != "$r" ]; then
+                COLLISION="$owner+$r $dst"
+            else
+                SUBNET_OF[$dst]=$r
+            fi
+        done
+    done
+    if [ -n "$COLLISION" ] && [ "$COLLISION" != "$COLLISION_LOGGED" ]; then
+        log "SUBNET COLLISION: $COLLISION — backup links must use distinct subnets (see docs); per-link probes stay interface-bound, but this configuration is unsupported"
+        COLLISION_LOGGED=$COLLISION
+    elif [ -z "$COLLISION" ] && [ -n "$COLLISION_LOGGED" ]; then
+        log "subnet collision cleared"
+        COLLISION_LOGGED=""
+    fi
+}
+
 current_active() {
     local best; best=$(ip -j route show default 2>/dev/null \
         | jq -r 'sort_by(.metric // 0)[0].dev // empty' 2>/dev/null)
@@ -476,6 +508,7 @@ write_status() {
                "$([ -e "$ESC_FLAG" ] && echo true || echo false)" \
                "$LAST_ESCALATION" "$SWITCH_COUNT" "$verify" \
                "$([ -e "$NONE_FLAG" ] && echo true || echo false)"
+        printf '"subnet_collision":"%s",' "$COLLISION"
         printf '"links":{'
         local r sep=""
         for r in wired wifi lte; do
@@ -496,6 +529,7 @@ trap 'log "stopping — sweeping owned state"; sweep_owned; rm -f "$NONE_FLAG" "
 
 while :; do
     discover_links
+    detect_collision
     ACTIVE=$(current_active)
     [ "$ACTIVE" != "$PREV_ACTIVE" ] && on_ladder_transition "$PREV_ACTIVE" "$ACTIVE"
     chain_tick

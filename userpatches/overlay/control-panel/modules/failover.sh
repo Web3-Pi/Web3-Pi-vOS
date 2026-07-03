@@ -73,6 +73,7 @@ failover_status() {
         txt=$(jq -r '
             (if .latched then "!! FLAP CLAMP LATCHED until \(.latched_until | todate) !!\n" else "" end) +
             (if .all_down then "!! ALL LINKS DOWN !!\n" else "" end) +
+            (if (.subnet_collision // "") != "" then "!! SUBNET COLLISION: \(.subnet_collision) — backup links must use distinct subnets !!\n" else "" end) +
             "Active WAN: \(.active)\nSwitches: \(.switches)  Escalated: \(.escalated)" +
             (if .verifying != "" then "  (verifying \(.verifying))" else "" end) + "\n\n" +
             (.links | to_entries | map("\(.key):\t\(.value.if // "-")\t\(.value.health)\tip=\(.value.ip // "-")") | join("\n"))' \
