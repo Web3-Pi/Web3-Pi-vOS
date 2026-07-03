@@ -24,7 +24,7 @@ failover_menu() {
             "2" "Disable & stop failover" \
             "3" "Live status (links, active WAN)" \
             "4" "Modem info (signal, SIM, network)" \
-            "5" "WiFi backup link setup" \
+            "5" "WiFi backup link (scan / setup / status)" \
             "6" "Data usage (LTE)" \
             "7" "Edit failover settings" \
             "8" "Link speed test (wired / LTE)" \
@@ -45,7 +45,7 @@ failover_menu() {
                fi ;;
             3) failover_status ;;
             4) failover_modem_info ;;
-            5) failover_wifi_setup ;;
+            5) failover_wifi_menu ;;
             6) failover_data_usage ;;
             7) ${EDITOR:-nano} "$FAILOVER_CONF"
                systemctl is-active -q w3p-failover 2>/dev/null \
@@ -95,14 +95,98 @@ failover_modem_info() {
     msg_box "Modem ($dev via $gw)" "${out:-API not reachable — non-ZTE modem or web UI password required.}"
 }
 
-failover_wifi_setup() {
-    local ssid psk wif dropin
-    # networkd's netplan backend rejects match:/globs for wifis — the stanza
-    # must name the concrete interface (bench: wld0 on resolute/6.18)
-    wif=$(basename "$(ls -d /sys/class/net/wl* 2>/dev/null | head -1)" 2>/dev/null)
+failover_wifi_iface() {
+    basename "$(ls -d /sys/class/net/wl* 2>/dev/null | head -1)" 2>/dev/null
+}
+
+failover_wifi_menu() {
+    local wif CHOICE
+    wif=$(failover_wifi_iface)
     [ -z "$wif" ] && { msg_box "WiFi Backup" "No WiFi interface (wl*) found on this system."; return; }
-    ssid=$(input_box "WiFi Backup Link" "SSID of the WiFi network (mid rung of the failover ladder, metric 300):" "")
-    [ -z "$ssid" ] && return
+    while true; do
+        local state="not configured"
+        [ -f "$WIFI_NETPLAN" ] && state="configured"
+        iw dev "$wif" link 2>/dev/null | grep -q "^Connected" && state="$state, connected"
+        CHOICE=$(whiptail --title "WiFi Backup Link ($wif)" \
+            --menu "Middle rung of the failover ladder (metric 300).\nStatus: $state" \
+            $TERM_HEIGHT $TERM_WIDTH $LIST_HEIGHT \
+            "1" "Scan & connect to a network" \
+            "2" "Enter SSID manually" \
+            "3" "Connection status" \
+            "4" "Forget WiFi configuration" \
+            "0" "Back" \
+            3>&1 1>&2 2>&3)
+        case $CHOICE in
+            1) failover_wifi_scan_connect "$wif" ;;
+            2) failover_wifi_setup "$wif" "" ;;
+            3) failover_wifi_status "$wif" ;;
+            4) failover_wifi_forget "$wif" ;;
+            0|"") return ;;
+        esac
+    done
+}
+
+# Scan for nearby networks (interface must be administratively up to scan;
+# leaving it up is harmless — it has no config until provisioned).
+failover_wifi_scan_connect() {
+    local wif=$1 scan choice
+    ip link set "$wif" up 2>/dev/null
+    TERM=ansi whiptail --infobox "Scanning for WiFi networks on $wif..." 8 50
+    # iw scan -> "SSID<TAB>signal%", strongest first, deduplicated
+    scan=$(iw dev "$wif" scan 2>/dev/null | awk '
+        /^BSS /            { sig="" }
+        /signal:/          { sig=$2 }
+        /^\tSSID: ./       { ssid=substr($0, 8)
+                             if (ssid != "" && !(ssid in best) || sig+0 > best[ssid]+0) best[ssid]=sig }
+        END { for (s in best) printf "%s\t%.0f\n", s, best[s] }' \
+        | sort -t$'\t' -k2 -nr | head -15)
+    if [ -z "$scan" ]; then
+        msg_box "WiFi Scan" "No networks found (or scan failed).\nYou can still enter the SSID manually."
+        return
+    fi
+    local args=() ssid sig first=ON
+    while IFS=$'\t' read -r ssid sig; do
+        args+=("$ssid" "signal ${sig} dBm" "$first"); first=OFF
+    done <<< "$scan"
+    choice=$(whiptail --title "WiFi Scan — networks in range" --radiolist \
+        "Pick a network (strongest first):" $TERM_HEIGHT $TERM_WIDTH 12 \
+        "${args[@]}" 3>&1 1>&2 2>&3) || return
+    [ -n "$choice" ] && failover_wifi_setup "$wif" "$choice"
+}
+
+failover_wifi_status() {
+    local wif=$1 link addr probe="not tested"
+    link=$(iw dev "$wif" link 2>/dev/null)
+    addr=$(ip -j -4 addr show dev "$wif" 2>/dev/null | jq -r '.[0].addr_info[0].local // "no address"')
+    if echo "$link" | grep -q "^Connected"; then
+        ping -I "$wif" -c1 -W3 -q 1.1.1.1 >/dev/null 2>&1 && probe="internet OK" || probe="NO internet via WiFi"
+    fi
+    msg_box "WiFi Status ($wif)" \
+"$( [ -f "$WIFI_NETPLAN" ] && echo "Config: $WIFI_NETPLAN present" || echo "Config: none" )
+IP: $addr    Probe: $probe
+
+$( echo "$link" | head -8 )
+
+Routes on $wif:
+$( ip route show dev "$wif" 2>/dev/null | head -3 )"
+}
+
+failover_wifi_forget() {
+    local wif=$1
+    [ -f "$WIFI_NETPLAN" ] || { msg_box "WiFi Backup" "Nothing to forget — no WiFi config present."; return; }
+    yesno_box "WiFi Backup" "Remove the WiFi backup configuration?\nThe failover ladder keeps working (Ethernet -> LTE)." || return
+    rm -f "$WIFI_NETPLAN"
+    rm -rf "/etc/systemd/network/10-netplan-$wif.network.d"
+    netplan generate 2>/dev/null && netplan apply
+    msg_box "WiFi Backup" "WiFi configuration removed."
+}
+
+failover_wifi_setup() {
+    local wif=$1 ssid=$2 psk dropin
+    if [ -z "$ssid" ]; then
+        ssid=$(input_box "WiFi Backup Link" "SSID of the WiFi network (mid rung of the failover ladder, metric 300):" "")
+        [ -z "$ssid" ] && return
+    fi
     psk=$(whiptail --title "WiFi Backup Link" --passwordbox "WPA2 password for '$ssid':" 10 60 3>&1 1>&2 2>&3)
     [ -z "$psk" ] && return
     # validate at the boundary: quotes/backslashes would corrupt the YAML
@@ -135,7 +219,20 @@ EOF
         mkdir -p "$dropin"
         printf '[Network]\nIgnoreCarrierLoss=3s\n' > "$dropin/w3p.conf"
         netplan apply
-        msg_box "WiFi Backup" "WiFi '$ssid' configured on $wif at metric 300.\nCheck: ip -br addr"
+        # wait for association + DHCP (up to 30 s), then report honestly
+        TERM=ansi whiptail --infobox "Connecting to '$ssid'..." 8 50
+        local i addr=""
+        for i in $(seq 1 15); do
+            sleep 2
+            addr=$(ip -j -4 addr show dev "$wif" 2>/dev/null | jq -r '.[0].addr_info[0].local // empty')
+            [ -n "$addr" ] && break
+        done
+        if [ -n "$addr" ]; then
+            local sig; sig=$(iw dev "$wif" link 2>/dev/null | awk '/signal:/ {print $2, $3}')
+            msg_box "WiFi Backup" "Connected: '$ssid' on $wif\nIP: $addr   Signal: ${sig:-?}\nRung active at metric 300 — the watchdog will use it automatically."
+        else
+            msg_box "WiFi Backup" "Config saved, but no connection after 30 s.\nCheck the password and signal, then see: Connection status.\n(journalctl -u netplan-wpa-$wif for details)"
+        fi
     else
         if [ -f "$WIFI_NETPLAN.bak" ]; then
             mv "$WIFI_NETPLAN.bak" "$WIFI_NETPLAN"; netplan generate 2>/dev/null
