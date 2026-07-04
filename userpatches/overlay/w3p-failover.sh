@@ -47,7 +47,8 @@ FAILOVER_NUDGE=1
 VERIFY_BUDGET_LTE_S=300
 VERIFY_BUDGET_FAST_S=120
 APT_INFLIGHT_WAIT_S=120                 # bounded wait before SIGINT-ing in-flight apt on LTE
-CAKE_KBIT=4500
+CAKE_KBIT=20000                         # anti-bufferbloat, sized near measured uplink — see failover.conf
+ATTEST_MIN_PEERS=6                      # validator-active CL-peer floor before attest_risk alarm
 BEACON_REST=http://127.0.0.1:5052
 GETH_RPC=http://127.0.0.1:8545
 [ -r "$CONF" ] && . "$CONF"
@@ -407,6 +408,31 @@ verify_tick() {
     fi
 }
 
+# A "synced" beacon with a starved gossip mesh signs attestations nobody
+# hears ("Attestation not sent: No peers on libp2p topic" — observed on a
+# CGNAT LTE dwell). When the validator is active and the CL peer count sits
+# below ATTEST_MIN_PEERS for 60 s, raise attest_risk so the panel/dashboard
+# tell the truth. Detection only — remediation is link quality / direct peers.
+ATTEST_RISK=0; ATTEST_LOW_SINCE=0
+attest_tick() {
+    systemctl is-active -q nimbus-validator 2>/dev/null || { ATTEST_RISK=0; ATTEST_LOW_SINCE=0; return 0; }
+    systemctl is-active -q nimbus-beacon-node 2>/dev/null || return 0
+    local p t=$(now)
+    p=$(curl -s --max-time 3 "$BEACON_REST/eth/v1/node/peer_count" \
+        | jq -r '.data.connected // empty' 2>/dev/null)
+    [ -n "$p" ] || return 0
+    if [ "$p" -lt "$ATTEST_MIN_PEERS" ] 2>/dev/null; then
+        [ "$ATTEST_LOW_SINCE" -eq 0 ] && ATTEST_LOW_SINCE=$t
+        if [ "$ATTEST_RISK" -eq 0 ] && [ $(( t - ATTEST_LOW_SINCE )) -ge 60 ]; then
+            ATTEST_RISK=1
+            log "ATTEST RISK: validator active but CL peers=$p < $ATTEST_MIN_PEERS for 60 s — attestations may not propagate"
+        fi
+    else
+        [ "$ATTEST_RISK" -eq 1 ] && log "attest risk cleared (CL peers=$p)"
+        ATTEST_RISK=0; ATTEST_LOW_SINCE=0
+    fi
+}
+
 # ------------------------------------------------------------- switching --
 prune_flap_window() {
     local t=$(now) kept="" s
@@ -508,7 +534,8 @@ write_status() {
                "$([ -e "$ESC_FLAG" ] && echo true || echo false)" \
                "$LAST_ESCALATION" "$SWITCH_COUNT" "$verify" \
                "$([ -e "$NONE_FLAG" ] && echo true || echo false)"
-        printf '"subnet_collision":"%s",' "$COLLISION"
+        printf '"subnet_collision":"%s","attest_risk":%s,' \
+               "$COLLISION" "$([ "$ATTEST_RISK" -eq 1 ] && echo true || echo false)"
         printf '"links":{'
         local r sep=""
         for r in wired wifi lte; do
@@ -536,6 +563,7 @@ while :; do
     update_health
     reconcile_assets
     verify_tick
+    attest_tick
     apt_inflight_tick
 
     t=$(now)
