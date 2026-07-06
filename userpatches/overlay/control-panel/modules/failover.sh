@@ -300,7 +300,7 @@ failover_speed_test() {
     fi
 
     . "$FAILOVER_CONF" 2>/dev/null
-    local min_down=${MIN_DOWN_MBIT:-20} min_up=${MIN_UP_MBIT:-5}
+    local min_down=${MIN_DOWN_MBIT:-20} min_up=${MIN_UP_MBIT:-10}
 
     TERM=ansi whiptail --infobox "Measuring $label ($dev)...\n\n1/3 latency" 10 50
     local lat down up down_mbit up_mbit
