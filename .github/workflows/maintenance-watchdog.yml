@@ -70,10 +70,12 @@ jobs:
           STATUS=$(echo "$RUN_DATA" | jq -r '.conclusion')
           ATTEMPT=$(echo "$RUN_DATA" | jq -r '.run_attempt')
 
-          # Validate that we have run data
+          # No runs yet is a benign state for a watchdog — there is simply
+          # nothing to babysit. Exit cleanly instead of failing (and emailing)
+          # on every scheduled tick until the monitored workflow first runs.
           if [[ -z "$ID" || "$ID" == "null" ]]; then
-            echo "::error::No workflow runs found"
-            exit 1
+            echo "::notice::No runs found for ${SCRIPT} yet — nothing to watch"
+            exit 0
           fi
 
           echo "Latest run: ${ID}"
