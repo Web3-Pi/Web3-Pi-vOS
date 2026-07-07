@@ -1668,6 +1668,10 @@ OC_DETECTED_MAX_FREQ=2400000
 OC_DETECT_DATE="$(date '+%Y-%m-%d %H:%M:%S') (manual reset)"
 EOF
 
+    # Drop any leftover auto-OC recovery hint so cpu-freq-safe.sh clamps to
+    # stock 2400 MHz at next boot instead of max(oc-config, oc-detect-progress).
+    rm -f /opt/web3pi/oc-detect-progress 2>/dev/null || true
+
     msg_box "Reset Complete" "CPU frequency reset to stock 2400 MHz.\n\nReboot to apply."
 }
 
