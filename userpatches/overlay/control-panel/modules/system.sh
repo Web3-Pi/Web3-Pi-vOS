@@ -1287,8 +1287,10 @@ system_auto_oc_menu() {
 
         CHOICE=$(whiptail --title "Auto OC Detection" \
             --menu "Detected Max: $DETECTED_FREQ | Current: $CURRENT_FREQ\nHW Ceiling: $HW_MAX | Last Run: $DETECT_DATE\nScan Range: ${SCAN_START} - ${SCAN_END} MHz" \
-            $TERM_HEIGHT $TERM_WIDTH 8 \
+            $TERM_HEIGHT $TERM_WIDTH 10 \
             "1" "Run Auto OC Detection" \
+            "M" "Set Max Frequency Manually (no test)" \
+            "S" "Show Current Frequency" \
             "2" "View Last Results" \
             "3" "View Detection Log" \
             "4" "Settings (range: ${SCAN_START}-${SCAN_END} MHz)" \
@@ -1299,6 +1301,8 @@ system_auto_oc_menu() {
 
         case $CHOICE in
             1) system_auto_oc_run ;;
+            M) system_oc_set_manual ;;
+            S) system_oc_show_current ;;
             2) system_auto_oc_results ;;
             3) system_auto_oc_log ;;
             4) system_auto_oc_settings ;;
@@ -1307,6 +1311,123 @@ system_auto_oc_menu() {
             0|"") return ;;
         esac
     done
+}
+
+system_oc_set_manual() {
+    local OC_CONFIG="/opt/web3pi/oc-config"
+
+    # Hardware ceiling (kHz) from config.txt arm_freq; cap the list to it.
+    local HW_MAX_KHZ
+    HW_MAX_KHZ=$(cat /sys/devices/system/cpu/cpu0/cpufreq/cpuinfo_max_freq 2>/dev/null || echo "3200000")
+    [ "$HW_MAX_KHZ" -gt 0 ] 2>/dev/null || HW_MAX_KHZ=3200000
+
+    # Currently configured value (kHz -> MHz) for the default highlight.
+    local CURRENT_KHZ=0
+    if [ -f "$OC_CONFIG" ]; then
+        source "$OC_CONFIG"
+        [ -n "${OC_DETECTED_MAX_FREQ:-}" ] && CURRENT_KHZ=$OC_DETECTED_MAX_FREQ
+    fi
+    local CURRENT_MHZ=$((CURRENT_KHZ / 1000))
+    [ "$CURRENT_MHZ" -gt 0 ] || CURRENT_MHZ=2400   # 0 = stock default
+
+    # Predefined list 2400..3200 MHz in 100 MHz steps, skipping any above HW ceiling.
+    local MENU_ITEMS=()
+    local f label
+    for f in 2400 2500 2600 2700 2800 2900 3000 3100 3200; do
+        [ $((f * 1000)) -le "$HW_MAX_KHZ" ] || continue
+        label="${f} MHz"
+        [ "$f" -eq 2400 ] && label="${f} MHz (stock)"
+        [ "$f" -eq "$CURRENT_MHZ" ] && label="${label} [current]"
+        MENU_ITEMS+=("$f" "$label")
+    done
+
+    if [ ${#MENU_ITEMS[@]} -eq 0 ]; then
+        msg_box "Error" "Could not read the CPU hardware frequency ceiling.\n\nExpected /sys/.../cpuinfo_max_freq to be available."
+        return
+    fi
+
+    local NEW_MHZ
+    NEW_MHZ=$(whiptail --title "Set Max CPU Frequency" \
+        --default-item "$CURRENT_MHZ" \
+        --menu "Manually pick the maximum CPU frequency (no stability test is run).\nHW ceiling: $((HW_MAX_KHZ / 1000)) MHz | Currently set: ${CURRENT_MHZ} MHz\n\nActive cooling + official 5.1V/5A PSU strongly advised." \
+        $TERM_HEIGHT $TERM_WIDTH 9 \
+        "${MENU_ITEMS[@]}" \
+        3>&1 1>&2 2>&3)
+
+    [ -z "$NEW_MHZ" ] && return   # cancelled
+
+    local NEW_KHZ=$((NEW_MHZ * 1000))
+
+    local WARN=""
+    if [ "$NEW_MHZ" -gt 2400 ]; then
+        WARN="\n\nWARNING: ${NEW_MHZ} MHz overclocks above the 2400 MHz stock speed. No stability test is performed. If this frequency is unstable on your board, the Pi may hang under load (the hardware watchdog will then reboot it). Make sure active cooling is working."
+    fi
+
+    if ! yesno_box "Confirm Frequency" \
+        "Set the maximum CPU frequency to ${NEW_MHZ} MHz?\n\nThis is written to ${OC_CONFIG} and re-applied by cpu-freq-safe.service on every boot.${WARN}"; then
+        return
+    fi
+
+    # Persist to the same file the boot clamp (cpu-freq-safe.sh) reads.
+    cat > "$OC_CONFIG" << EOF
+# Web3 Pi - CPU Frequency Configuration
+# Manually set via control panel: $(date '+%Y-%m-%d %H:%M:%S')
+# Applied at boot by cpu-freq-safe.service (clamps scaling_max_freq).
+OC_DETECTED_MAX_FREQ=${NEW_KHZ}
+OC_DETECT_DATE="$(date '+%Y-%m-%d %H:%M:%S') (manual)"
+EOF
+
+    # Optionally apply now by reusing the exact boot-clamp logic.
+    local APPLIED_NOTE="Reboot to apply the new frequency."
+    if [ -x /opt/web3pi/cpu-freq-safe.sh ]; then
+        if yesno_box "Apply Now" "Apply ${NEW_MHZ} MHz immediately, without a reboot?\n\nThe setting persists across reboots either way."; then
+            /opt/web3pi/cpu-freq-safe.sh >/dev/null 2>&1
+            local LIVE_MAX
+            LIVE_MAX=$(cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_max_freq 2>/dev/null || echo "0")
+            APPLIED_NOTE="Applied now. Live max is $((LIVE_MAX / 1000)) MHz."
+        fi
+    fi
+
+    msg_box "Frequency Set" "Maximum CPU frequency set to ${NEW_MHZ} MHz.\n\n${APPLIED_NOTE}"
+}
+
+system_oc_show_current() {
+    local OC_CONFIG="/opt/web3pi/oc-config"
+
+    local CONFIGURED="stock default (2400 MHz)"
+    local CONFIG_WHEN="never set (using boot default)"
+    if [ -f "$OC_CONFIG" ]; then
+        source "$OC_CONFIG"
+        if [ -n "${OC_DETECTED_MAX_FREQ:-}" ] && [ "$OC_DETECTED_MAX_FREQ" -gt 0 ] 2>/dev/null; then
+            CONFIGURED="$((OC_DETECTED_MAX_FREQ / 1000)) MHz"
+        fi
+        [ -n "${OC_DETECT_DATE:-}" ] && CONFIG_WHEN="${OC_DETECT_DATE}"
+    fi
+
+    local CUR MAXF MINF GOV HWMAX
+    CUR=$(cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_cur_freq 2>/dev/null || echo "0")
+    MAXF=$(cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_max_freq 2>/dev/null || echo "0")
+    MINF=$(cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_min_freq 2>/dev/null || echo "0")
+    GOV=$(cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor 2>/dev/null || echo "N/A")
+    HWMAX=$(cat /sys/devices/system/cpu/cpu0/cpufreq/cpuinfo_max_freq 2>/dev/null || echo "0")
+
+    INFO="===============================================================\n"
+    INFO+="            CURRENT CPU FREQUENCY\n"
+    INFO+="===============================================================\n\n"
+    INFO+="  CONFIGURED (persists across reboot)\n"
+    INFO+="---------------------------------------------------------------\n"
+    INFO+="  Max frequency: ${CONFIGURED}\n"
+    INFO+="  Set on:        ${CONFIG_WHEN}\n"
+    INFO+="  Config file:   ${OC_CONFIG}\n\n"
+    INFO+="  LIVE (right now)\n"
+    INFO+="---------------------------------------------------------------\n"
+    INFO+="  Current freq:  $((CUR / 1000)) MHz\n"
+    INFO+="  Max allowed:   $((MAXF / 1000)) MHz\n"
+    INFO+="  Min allowed:   $((MINF / 1000)) MHz\n"
+    INFO+="  Governor:      ${GOV}\n"
+    INFO+="  HW ceiling:    $((HWMAX / 1000)) MHz\n"
+
+    whiptail --title "Current CPU Frequency" --scrolltext --msgbox "$INFO" 22 $TERM_WIDTH
 }
 
 system_auto_oc_settings() {
