@@ -62,7 +62,7 @@ adduser --system --home /var/lib/el --group el
 adduser --system --home /var/lib/cl --group cl
 
 # Set secure permissions for client data directories
-chmod 750 /var/lib/el  # 750: group el can access (cl needs jwt.hex)
+chmod 750 /var/lib/el  # 750: el owns data dir (group el retained for compatibility; JWT now lives in /etc/web3pi)
 chmod 700 /var/lib/cl  # 700: Nimbus requirement
 
 # Pre-create 'signer'
@@ -112,11 +112,17 @@ systemctl enable ssh-keygen.service
 #--------------------------------------------------------------------------------------------
 
 ## JWT secret for EL-CL communication #######################################################
-# Generate JWT secret (will be used by both Geth and Nimbus)
-openssl rand -hex 32 > /var/lib/el/jwt.hex
-chown el:el /var/lib/el/jwt.hex
-chmod 640 /var/lib/el/jwt.hex
-# Add 'cl' user to 'el' group so nimbus can read JWT
+# Generate JWT secret shared by Geth (EL) and Nimbus (CL).
+# IMPORTANT: stored OUTSIDE the EL datadir (/var/lib/el) so that wiping EL data
+# (control-panel "Wipe all data" -> rm -rf /var/lib/el/*, or a Geth resync) never
+# deletes it. If it were deleted, Geth would regenerate it as 0600 el:el and Nimbus
+# (user 'cl') could no longer read it -> CL crash-loop ("jwt-secret ... File not accessible").
+mkdir -p /etc/web3pi
+chmod 755 /etc/web3pi
+openssl rand -hex 32 > /etc/web3pi/jwt.hex
+chown el:el /etc/web3pi/jwt.hex
+chmod 640 /etc/web3pi/jwt.hex
+# Add 'cl' user to 'el' group so nimbus can read the JWT secret (640, group el)
 usermod -aG el cl
 #--------------------------------------------------------------------------------------------
 

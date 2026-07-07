@@ -25,7 +25,7 @@ ExecStart=/usr/bin/nimbus_beacon_node \
     --network=${NETWORK} \
     --data-dir=/var/lib/cl \
     --el=http://127.0.0.1:8551 \
-    --jwt-secret=/var/lib/el/jwt.hex \
+    --jwt-secret=/etc/web3pi/jwt.hex \
     --rest \
     --rest-address=127.0.0.1 \
     --rest-port=5052 \
@@ -46,7 +46,7 @@ PrivateTmp=yes
 ProtectSystem=strict
 ProtectHome=yes
 ReadWritePaths=/var/lib/cl
-ReadOnlyPaths=/var/lib/el/jwt.hex
+ReadOnlyPaths=/etc/web3pi/jwt.hex
 
 [Install]
 WantedBy=multi-user.target

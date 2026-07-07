@@ -170,8 +170,10 @@ The system employs a two-phase installation strategy:
 ├── servers_holesky.txt
 └── servers_hoodi.txt
 
+/etc/web3pi/                    # Web3 Pi config (survives EL data wipe)
+└── jwt.hex                     # JWT secret for EL-CL auth (el:el 640)
+
 /var/lib/el/                    # Geth data directory (el user)
-├── jwt.hex                     # JWT secret for EL-CL auth
 └── [blockchain data]
 
 /var/lib/cl/                    # Nimbus beacon data (cl user)
@@ -210,7 +212,7 @@ The system employs a two-phase installation strategy:
 - `plugdev` - Access USB devices
 
 **Cross-user permissions:**
-- `cl` user is added to `el` group to read JWT secret (`/var/lib/el/jwt.hex`)
+- `cl` user is added to `el` group to read JWT secret (`/etc/web3pi/jwt.hex`)
 - JWT file permissions: `640` (owner: el, group: el, readable by cl)
 
 ### 3.3 Service-to-User Mapping
@@ -319,7 +321,7 @@ The LUKS (Linux Unified Key Setup) encrypted partition provides hardware-level p
 **Configuration highlights** (`nimbus-beacon-node.service`):
 - REST API: localhost only (127.0.0.1:5052)
 - EL connection: http://127.0.0.1:8551
-- JWT authentication: Reads `/var/lib/el/jwt.hex`
+- JWT authentication: Reads `/etc/web3pi/jwt.hex`
 - P2P port: Configurable (default 9000)
 - ENR auto-update: Enabled
 
