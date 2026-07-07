@@ -1342,7 +1342,7 @@ system_oc_set_manual() {
     done
 
     if [ ${#MENU_ITEMS[@]} -eq 0 ]; then
-        msg_box "Error" "Could not read the CPU hardware frequency ceiling.\n\nExpected /sys/.../cpuinfo_max_freq to be available."
+        msg_box "Error" "CPU hardware ceiling is $((HW_MAX_KHZ / 1000)) MHz, below the 2400 MHz minimum of this list.\n\nNo frequency can be selected. Check arm_freq in config.txt (expected 3200)."
         return
     fi
 
@@ -1376,6 +1376,11 @@ system_oc_set_manual() {
 OC_DETECTED_MAX_FREQ=${NEW_KHZ}
 OC_DETECT_DATE="$(date '+%Y-%m-%d %H:%M:%S') (manual)"
 EOF
+
+    # A manual choice is authoritative: drop any leftover auto-OC recovery hint
+    # so cpu-freq-safe.sh (live below and at next boot) clamps to exactly this
+    # value instead of max(oc-config, oc-detect-progress).
+    rm -f /opt/web3pi/oc-detect-progress 2>/dev/null || true
 
     # Optionally apply now by reusing the exact boot-clamp logic.
     local APPLIED_NOTE="Reboot to apply the new frequency."
