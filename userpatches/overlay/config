@@ -6,6 +6,15 @@ NETWORK=hoodi
 # Geth P2P port (TCP/UDP)
 GETH_PORT=30303
 
+# Geth chain-history retention (disk usage).
+# Full flag passed to geth, or empty to omit it (Geth default = keep all history).
+#   --history.chain=postprague  prune pre-Prague history  (~1 TB less, recommended)
+#   --history.chain=postmerge   prune pre-Merge history
+#   --history.chain=all         keep full history (Geth default, most disk)
+#   (empty)                     do not pass the flag
+# Toggle via control-panel.sh -> Eth Network Configuration -> Geth Chain History.
+GETH_HISTORY_FLAG="--history.chain=postprague"
+
 # Nimbus P2P port (TCP/UDP)
 NIMBUS_PORT=9000
 

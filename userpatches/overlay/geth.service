@@ -19,11 +19,18 @@ Environment=HOME=/var/lib/el
 EnvironmentFile=/opt/web3pi/config
 
 # Geth command
-# Adjust parameters as needed for your setup
+# Adjust parameters as needed for your setup.
+# GETH_HISTORY_FLAG comes from the EnvironmentFile (/opt/web3pi/config) and holds
+# the chain-history retention flag (e.g. --history.chain=postprague) or is empty.
+# It is referenced WITHOUT braces on purpose: systemd word-splits $VAR, so an empty
+# value expands to zero arguments. ${VAR} (braces) would instead pass a single empty
+# "" argument and break geth startup. Do not add braces here.
+# Change it via control-panel.sh -> Eth Network Configuration -> Geth Chain History.
 ExecStart=/usr/bin/geth \
     --${NETWORK} \
     --datadir=/var/lib/el \
     --state.scheme=path \
+    $GETH_HISTORY_FLAG \
     --port=${GETH_PORT} \
     --discovery.port=${GETH_PORT} \
     --http \

@@ -42,6 +42,10 @@ load_config() {
 }
 
 save_config() {
+    # Preserve an explicitly-empty GETH_HISTORY_FLAG (user chose "off"): the
+    # colon-less default only fires for a truly-unset variable (upgrade path),
+    # not for an intentional empty value.
+    local geth_history_flag="${GETH_HISTORY_FLAG-"--history.chain=postprague"}"
     cat > "$CONFIG_FILE" << EOF
 # Web3 Pi Staking Configuration
 
@@ -50,6 +54,15 @@ NETWORK=${NETWORK:-hoodi}
 
 # Geth P2P port (TCP/UDP)
 GETH_PORT=${GETH_PORT:-30303}
+
+# Geth chain-history retention (disk usage).
+# Full flag passed to geth, or empty to omit it (Geth default = keep all history).
+#   --history.chain=postprague  prune pre-Prague history  (~1 TB less, recommended)
+#   --history.chain=postmerge   prune pre-Merge history
+#   --history.chain=all         keep full history (Geth default, most disk)
+#   (empty)                     do not pass the flag
+# Toggle via control-panel.sh -> Eth Network Configuration -> Geth Chain History.
+GETH_HISTORY_FLAG="${geth_history_flag}"
 
 # Nimbus P2P port (TCP/UDP)
 NIMBUS_PORT=${NIMBUS_PORT:-9000}

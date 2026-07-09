@@ -789,6 +789,7 @@ KERNEL_TARGET="current,edge,legacy"
 - Geth cache set to 4096 MB
 - Geth memory limit 10 GB (cgroups v2)
 - Geth state.scheme=path (path-based storage)
+- Geth history.chain=postprague by default (prunes pre-Prague history, ~1 TB less disk; toggleable in control-panel)
 - Geth snap sync mode
 - Service security flags: NoNewPrivileges, PrivateTmp, ProtectSystem
 
