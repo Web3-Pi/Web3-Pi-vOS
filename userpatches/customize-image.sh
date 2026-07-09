@@ -252,6 +252,10 @@ chmod +x /opt/web3pi/control-panel.sh
 cp -r /tmp/overlay/control-panel /opt/web3pi/control-panel
 chmod +x /opt/web3pi/control-panel/lib/*.sh
 chmod +x /opt/web3pi/control-panel/modules/*.sh
+
+# Wrapper in PATH so `sudo control-panel` works from any directory (shown in the MOTD).
+# The script canonicalises its own path via readlink -f, so the module dir resolves correctly.
+ln -sf /opt/web3pi/control-panel.sh /usr/local/bin/control-panel
 #--------------------------------------------------------------------------------------------
 
 ## Live TUI dashboard ########################################################################

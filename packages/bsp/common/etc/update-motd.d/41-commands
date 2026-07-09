@@ -27,15 +27,12 @@ _motd_spacer() {
   [[ -e "$stamp" ]] || { echo ""; : > "$stamp"; }
 }
 
-# read upgrade count to show upgrade command
-[[ -f /var/cache/apt/archives/updates.number ]] && . /var/cache/apt/archives/updates.number
-
-# text, sudo / without, command, condition
-# condition can be fairly complex
+# text, sudo / without, command (displayed), condition, existence-check target
+# The 5th field is what "command -v" tests: it lets the displayed command differ
+# from the checked binary (e.g. a multi-word "sudo ..." invocation).
 list=(
-    "Configuration","","armbian-config","true"
-    "Upgrade","","armbian-upgrade","[[ \"${NUM_UPDATES}\" -gt 0 ]]"
-    "Monitoring","","htop","true"
+    "Configuration","","sudo control-panel","true","control-panel"
+    "Monitoring","","w3p-dashboard","true","w3p-dashboard"
 )
 
 # verify if command exits on the system
@@ -44,9 +41,9 @@ name_len=0
 output=()
 for l in "${list[@]}"
 do
-	IFS=',' read -r name sudo command condition <<< "$l"
+	IFS=',' read -r name sudo command condition check <<< "$l"
 	if [[ "${condition}" == "true" ]] || eval "${condition}" 2> /dev/null; then
-		if command -v "${command}" &> /dev/null; then
+		if command -v "${check}" &> /dev/null; then
 			# seek for maximum description length
 			if [[ ${#name} -ge ${name_len} ]]; then
 				name_len=${#name}
