@@ -21,6 +21,7 @@ system_menu() {
             "B" "OC (Pi-Under-Pressure)" \
             "C" "Web3 Pi UPS" \
             "D" "Auto OC Detection" \
+            "E" "LCD Display" \
             "9" "Reboot System" \
             "A" "Shutdown System" \
             "0" "Back to Main Menu" \
@@ -38,6 +39,7 @@ system_menu() {
             B) system_oc_menu ;;
             C) system_ups_menu ;;
             D) system_auto_oc_menu ;;
+            E) system_lcd_menu ;;
             9)
                 if yesno_box "Reboot" "Reboot the system now?"; then
                     reboot

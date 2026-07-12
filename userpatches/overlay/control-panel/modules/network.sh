@@ -92,6 +92,7 @@ network_geth_history() {
 
 network_select() {
     load_config
+    local OLD_NETWORK="$NETWORK"
     NETWORK=$(whiptail --title "Select Network" \
         --radiolist "Choose Ethereum network:" $TERM_HEIGHT $TERM_WIDTH 4 \
         "hoodi" "Testnet (recommended for testing)" $([ "$NETWORK" = "hoodi" ] && echo "ON" || echo "OFF") \
@@ -100,8 +101,27 @@ network_select() {
         3>&1 1>&2 2>&3)
 
     if [ -n "$NETWORK" ]; then
+        # MEV relays are network-specific: on a network change replace the list
+        # with the new network's defaults (mevboost.sh). A network with no
+        # relays (holesky, shut down 2025) force-disables MEV Boost.
+        # Only variables are mutated here; systemd actions run AFTER save_config,
+        # because a restart re-reads EnvironmentFile from disk (a restart before
+        # the save would relaunch mev-boost with the OLD network/relays).
+        local MEV_NOTE="" MEV_RESTART=false
+        if [ "$NETWORK" != "$OLD_NETWORK" ] && { [ "${MEV_BOOST_ENABLED:-false}" = "true" ] || [ -n "$MEV_RELAYS" ]; }; then
+            MEV_RELAYS="$(mevboost_default_relays "$NETWORK")"
+            if [ -z "$MEV_RELAYS" ] && [ "${MEV_BOOST_ENABLED:-false}" = "true" ]; then
+                MEV_BOOST_ENABLED=false
+                systemctl disable --now mev-boost 2>/dev/null
+                MEV_NOTE="\n\nMEV Boost: DISABLED (no relays operate on $NETWORK)"
+            elif [ -n "$MEV_RELAYS" ]; then
+                MEV_NOTE="\n\nMEV relays reset to $NETWORK defaults."
+                [ "${MEV_BOOST_ENABLED:-false}" = "true" ] && MEV_RESTART=true
+            fi
+        fi
         save_config
-        msg_box "Network Changed" "Network set to: $NETWORK\n\nRemember to:\n1. Run trusted node sync\n2. Restart services"
+        [ "$MEV_RESTART" = "true" ] && systemctl try-restart mev-boost 2>/dev/null
+        msg_box "Network Changed" "Network set to: $NETWORK\n\nRemember to:\n1. Run trusted node sync\n2. Restart services$MEV_NOTE"
     fi
 }
 

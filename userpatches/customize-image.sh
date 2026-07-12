@@ -67,6 +67,9 @@ chmod 700 /var/lib/cl  # 700: Nimbus requirement
 
 # Pre-create 'signer'
 adduser --system --no-create-home --shell /usr/sbin/nologin --group signer
+
+# Pre-create 'mevboost' (stateless mev-boost daemon, no home needed)
+adduser --system --no-create-home --shell /usr/sbin/nologin --group mevboost
 #--------------------------------------------------------------------------------------------
 
 ## Misc #####################################################################################
@@ -212,6 +215,30 @@ cp /tmp/overlay/nimbus-beacon-node.service /etc/systemd/system/nimbus-beacon-nod
 # Service for nimbus_validator_client (not enabled - manual start after LUKS unlock)
 cp /tmp/overlay/nimbus-validator.service /etc/systemd/system/nimbus-validator.service
 # Don't enable - started manually via unlock-validator.sh
+#--------------------------------------------------------------------------------------------
+
+## MEV-Boost (external block builder) #######################################################
+# Pinned flashbots/mev-boost release, sha256-verified (unlike the install-latest
+# w3p-ups below: this binary sits between the validator and the relays, so pin it).
+# Non-fatal on download failure — the control-panel refuses to enable MEV Boost
+# when the binary is missing. Not enabled here; the user turns it on via
+# control-panel (Validator Management -> MEV Boost), which fills MEV_RELAYS and
+# the nimbus payload-builder flag fragments in /opt/web3pi/config.
+MEV_BOOST_VERSION=1.12
+MEV_BOOST_SHA256=78afdb4ba507595b933ec5925f2b565a6f456216c5e8f1f08e40dbe0420fb4c4
+MEV_BOOST_URL="https://github.com/flashbots/mev-boost/releases/download/v${MEV_BOOST_VERSION}/mev-boost_${MEV_BOOST_VERSION}_linux_arm64.tar.gz"
+MEV_BOOST_TMP=$(mktemp -d)
+if curl -fsSL "$MEV_BOOST_URL" -o "${MEV_BOOST_TMP}/mev-boost.tar.gz" \
+   && echo "${MEV_BOOST_SHA256}  ${MEV_BOOST_TMP}/mev-boost.tar.gz" | sha256sum -c - > /dev/null 2>&1 \
+   && tar -xzf "${MEV_BOOST_TMP}/mev-boost.tar.gz" -C "${MEV_BOOST_TMP}" mev-boost; then
+    install -o root -g root -m 755 "${MEV_BOOST_TMP}/mev-boost" /usr/local/bin/mev-boost
+    echo "mev-boost v${MEV_BOOST_VERSION} installed."
+else
+    echo "WARN: mev-boost v${MEV_BOOST_VERSION} download/checksum failed; skipping (MEV Boost will be unavailable)"
+fi
+rm -rf "${MEV_BOOST_TMP}"
+cp /tmp/overlay/mev-boost.service /etc/systemd/system/mev-boost.service
+# systemctl enable mev-boost.service   (control-panel enables it on demand)
 #--------------------------------------------------------------------------------------------
 
 ## Internet failover watchdog (M5) ##########################################################
@@ -375,6 +402,54 @@ else
         echo "WARN: failed to download w3p-ups tarball from $W3P_UPS_TARBALL_URL"
     fi
     rm -rf "${W3P_UPS_TMP}"
+fi
+#--------------------------------------------------------------------------------------------
+
+
+## Install Web3 Pi LCD dashboard (w3p-hwm) ##################################################
+# Pre-install the latest released LCD dashboard so the image boots with the
+# ST7789 SPI panel driven automatically. Assets (font/logos/animation) are
+# embedded in the binary and SPI is enabled by default in config.txt (see
+# config/sources/families/bcm2711.conf), so this only drops a binary + unit.
+# A missing/unwired panel is handled in-process (service stays active), so it is
+# safe to enable unconditionally. Falls back silently if the release can't be
+# fetched at build time — control-panel still has an install/update path.
+W3P_HWM_VERSION=$(curl -fsSL "https://api.github.com/repos/Web3-Pi/web3-pi-lcd/releases/latest" 2>/dev/null | grep '"tag_name":' | head -1 | sed -E 's/.*"([^"]+)".*/\1/')
+if [ -z "$W3P_HWM_VERSION" ]; then
+    echo "WARN: could not resolve latest w3p-hwm release tag; skipping pre-install"
+else
+    W3P_HWM_BASE="https://github.com/Web3-Pi/web3-pi-lcd/releases/download/${W3P_HWM_VERSION}"
+    W3P_HWM_TMP=$(mktemp -d)
+    if curl -fsSL "${W3P_HWM_BASE}/w3p-hwm-linux-arm64" -o "${W3P_HWM_TMP}/w3p-hwm"; then
+        install -m 755 "${W3P_HWM_TMP}/w3p-hwm" /usr/local/bin/w3p-hwm
+        # The unit is published as a release asset (canonical source). Older
+        # releases without it fall back to the same unit written inline.
+        if curl -fsSL "${W3P_HWM_BASE}/w3p-hwm.service" -o "${W3P_HWM_TMP}/w3p-hwm.service"; then
+            install -m 644 "${W3P_HWM_TMP}/w3p-hwm.service" /etc/systemd/system/w3p-hwm.service
+        else
+            cat > /etc/systemd/system/w3p-hwm.service <<'EOF'
+[Unit]
+Description=Web3 Pi LCD dashboard (w3p-hwm)
+Documentation=https://github.com/Web3-Pi/web3-pi-lcd
+After=local-fs.target
+
+[Service]
+ExecStart=/usr/local/bin/w3p-hwm
+StateDirectory=w3p-hwm
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+EOF
+        fi
+        systemctl daemon-reload
+        systemctl enable w3p-hwm.service
+        echo "w3p-hwm ${W3P_HWM_VERSION} installed; service enabled."
+    else
+        echo "WARN: failed to download w3p-hwm binary from ${W3P_HWM_BASE}/w3p-hwm-linux-arm64"
+    fi
+    rm -rf "$W3P_HWM_TMP"
 fi
 #--------------------------------------------------------------------------------------------
 

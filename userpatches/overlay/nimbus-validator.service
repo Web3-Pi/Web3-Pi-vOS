@@ -22,12 +22,18 @@ Environment=HOME=/home/signer
 EnvironmentFile=/opt/web3pi/config
 
 # Nimbus validator client command
+# MEV_BOOST_VC_FLAGS comes from the EnvironmentFile (/opt/web3pi/config): either
+# "--payload-builder=true" or empty. Required on the VC as well as the beacon
+# node (nimbus.guide/external-block-builder.html); the builder URL goes only on
+# the beacon node. Referenced WITHOUT braces on purpose: systemd word-splits
+# $VAR, so an empty value expands to zero arguments.
 ExecStart=/usr/bin/nimbus_validator_client \
     --data-dir=/home/signer/keys \
     --beacon-node=http://127.0.0.1:5052 \
     --suggested-fee-recipient=${FEE_RECIPIENT} \
     --graffiti=${GRAFFITI} \
-    --log-level=INFO
+    --log-level=INFO \
+    $MEV_BOOST_VC_FLAGS
 
 # Security hardening
 NoNewPrivileges=yes

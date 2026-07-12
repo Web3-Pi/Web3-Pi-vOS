@@ -1,7 +1,9 @@
 [Unit]
 Description=Nimbus Beacon Node (Consensus Layer)
 Documentation=https://nimbus.guide/
-After=network-online.target geth.service
+# mev-boost: ordering only (no Wants/Requires) — the beacon node must run even
+# when MEV Boost is disabled, and falls back to local block production anyway.
+After=network-online.target geth.service mev-boost.service
 Wants=network-online.target
 Requires=geth.service
 
@@ -20,7 +22,12 @@ Environment=HOME=/var/lib/cl
 EnvironmentFile=/opt/web3pi/config
 
 # Nimbus beacon node command
-# Adjust parameters as needed for your setup
+# Adjust parameters as needed for your setup.
+# MEV_BOOST_BN_FLAGS comes from the EnvironmentFile (/opt/web3pi/config): either
+# "--payload-builder=true --payload-builder-url=http://127.0.0.1:18550" or empty.
+# Referenced WITHOUT braces on purpose: systemd word-splits $VAR, so an empty
+# value expands to zero arguments (same as GETH_HISTORY_FLAG in geth.service).
+# Toggle via control-panel.sh -> Validator Management -> MEV Boost.
 ExecStart=/usr/bin/nimbus_beacon_node \
     --network=${NETWORK} \
     --data-dir=/var/lib/cl \
@@ -32,8 +39,9 @@ ExecStart=/usr/bin/nimbus_beacon_node \
     --rest-allow-origin='*' \
     --tcp-port=${NIMBUS_PORT} \
     --udp-port=${NIMBUS_PORT} \
-    --enr-auto-update
-    
+    --enr-auto-update \
+    $MEV_BOOST_BN_FLAGS
+
 # Soft memory ceiling: under prolonged non-finality the beacon's memory can
 # balloon; reclaim pressure beats the OOM-killer picking it (M5 plan v2 §5.9).
 # Percentage of physical RAM: product target is the 16 GB RPi5 (-> 8 GB ceiling),

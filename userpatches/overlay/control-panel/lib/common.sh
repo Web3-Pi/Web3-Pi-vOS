@@ -46,6 +46,17 @@ save_config() {
     # colon-less default only fires for a truly-unset variable (upgrade path),
     # not for an intentional empty value.
     local geth_history_flag="${GETH_HISTORY_FLAG-"--history.chain=postprague"}"
+
+    # MEV-Boost: MEV_BOOST_ENABLED is the single source of truth; the per-unit
+    # flag fragments are re-derived on every save so they can never disagree
+    # with it. The nimbus units reference them WITHOUT braces (word-split,
+    # empty -> zero args — same trick as GETH_HISTORY_FLAG in geth.service).
+    local mev_boost_enabled="${MEV_BOOST_ENABLED:-false}"
+    local mev_bn_flags="" mev_vc_flags=""
+    if [ "$mev_boost_enabled" = "true" ]; then
+        mev_bn_flags="--payload-builder=true --payload-builder-url=http://127.0.0.1:18550"
+        mev_vc_flags="--payload-builder=true"
+    fi
     cat > "$CONFIG_FILE" << EOF
 # Web3 Pi Staking Configuration
 
@@ -79,6 +90,20 @@ FEE_RECIPIENT=${FEE_RECIPIENT:-0x0000000000000000000000000000000000000000}
 
 # Graffiti message (max 32 characters, visible in proposed blocks)
 GRAFFITI=${GRAFFITI:-Web3Pi}
+
+# MEV-Boost (external block builder)
+# Toggle + relay list via control-panel.sh -> Validator Management -> MEV Boost.
+MEV_BOOST_ENABLED=${mev_boost_enabled}
+
+# Comma-separated relay URLs (https://0x<pubkey>@host). Network-specific:
+# switching NETWORK resets this to the new network's defaults.
+MEV_RELAYS="${MEV_RELAYS}"
+
+# Derived from MEV_BOOST_ENABLED — do not edit by hand (rewritten on every
+# config save). The nimbus units reference these WITHOUT braces so an empty
+# value expands to zero arguments (same trick as GETH_HISTORY_FLAG above).
+MEV_BOOST_BN_FLAGS="${mev_bn_flags}"
+MEV_BOOST_VC_FLAGS="${mev_vc_flags}"
 EOF
 }
 

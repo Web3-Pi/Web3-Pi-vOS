@@ -16,9 +16,10 @@ service_menu() {
             "1" "Geth (Execution Layer)" \
             "2" "Nimbus Beacon Node (Consensus Layer)" \
             "3" "Nimbus Validator" \
-            "4" "View Logs" \
-            "5" "Start All Services" \
-            "6" "Stop All Services" \
+            "4" "MEV-Boost" \
+            "5" "View Logs" \
+            "6" "Start All Services" \
+            "7" "Stop All Services" \
             "0" "Back to Main Menu" \
             3>&1 1>&2 2>&3)
 
@@ -26,13 +27,30 @@ service_menu() {
             1) service_control "geth" "Geth" ;;
             2) service_control "nimbus-beacon-node" "Nimbus Beacon Node" ;;
             3) service_control "nimbus-validator" "Nimbus Validator" ;;
-            4) service_logs ;;
-            5)
-                systemctl start geth nimbus-beacon-node
-                msg_box "Services Started" "Geth and Nimbus Beacon Node started."
+            4)
+                # Raw unit control only when the config toggle is on: starting
+                # mev-boost while disabled crash-loops (empty MEV_RELAYS) and
+                # would not activate MEV anyway (nimbus flags stay off).
+                load_config
+                if [ "${MEV_BOOST_ENABLED:-false}" != "true" ]; then
+                    msg_box "MEV Boost Disabled" "MEV Boost is managed via:\n  Validator Management -> MEV Boost\n\nStarting the raw service while disabled would not\nactivate MEV (Nimbus payload-builder flags stay off)."
+                else
+                    service_control "mev-boost" "MEV-Boost"
+                fi
                 ;;
+            5) service_logs ;;
             6)
-                systemctl stop nimbus-validator nimbus-beacon-node geth 2>/dev/null
+                load_config
+                if [ "${MEV_BOOST_ENABLED:-false}" = "true" ]; then
+                    systemctl start mev-boost geth nimbus-beacon-node
+                    msg_box "Services Started" "MEV-Boost, Geth and Nimbus Beacon Node started."
+                else
+                    systemctl start geth nimbus-beacon-node
+                    msg_box "Services Started" "Geth and Nimbus Beacon Node started."
+                fi
+                ;;
+            7)
+                systemctl stop nimbus-validator nimbus-beacon-node geth mev-boost 2>/dev/null
                 msg_box "Services Stopped" "All services stopped."
                 ;;
             0|"") return ;;
@@ -81,6 +99,7 @@ service_logs() {
         "1" "Geth" \
         "2" "Nimbus Beacon Node" \
         "3" "Nimbus Validator" \
+        "4" "MEV-Boost" \
         "0" "Back" \
         3>&1 1>&2 2>&3)
 
@@ -88,5 +107,6 @@ service_logs() {
         1) clear; journalctl -u geth -n 100 --no-pager; read -p "Press Enter to continue..." ;;
         2) clear; journalctl -u nimbus-beacon-node -n 100 --no-pager; read -p "Press Enter to continue..." ;;
         3) clear; journalctl -u nimbus-validator -n 100 --no-pager; read -p "Press Enter to continue..." ;;
+        4) clear; journalctl -u mev-boost -n 100 --no-pager; read -p "Press Enter to continue..." ;;
     esac
 }

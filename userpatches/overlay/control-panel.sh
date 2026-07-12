@@ -74,4 +74,14 @@ main_menu() {
 #------------------------------------------------------------------------------
 
 check_root
+
+# Single instance: concurrent panels race on the config file — save_config
+# rewrites it wholesale from (possibly stale) shell state, so a second session
+# would clobber the first one's changes.
+exec 9>/run/web3pi-control-panel.lock
+if ! flock -n 9; then
+    echo "Another control-panel session is already running (config would be clobbered)."
+    exit 1
+fi
+
 main_menu

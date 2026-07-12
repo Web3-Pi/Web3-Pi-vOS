@@ -67,7 +67,7 @@ data_wipe_all() {
     fi
 
     # Stop all services
-    systemctl stop nimbus-validator nimbus-beacon-node geth 2>/dev/null
+    systemctl stop nimbus-validator nimbus-beacon-node geth mev-boost 2>/dev/null
 
     # Wipe all data
     rm -rf /var/lib/el/*

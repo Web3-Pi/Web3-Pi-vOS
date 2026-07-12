@@ -23,6 +23,9 @@ validator_menu() {
         # Shorten fee recipient for display
         FEE_SHORT="${FEE_RECIPIENT:0:10}...${FEE_RECIPIENT: -4}"
 
+        MEV_STATE="off"
+        [ "${MEV_BOOST_ENABLED:-false}" = "true" ] && MEV_STATE="on"
+
         CHOICE=$(whiptail --title "Validator Management" \
             --menu "Status: $VC_STATUS | LUKS: $LUKS_MOUNTED | Validators: $VALIDATOR_COUNT" \
             $TERM_HEIGHT $TERM_WIDTH $LIST_HEIGHT \
@@ -33,7 +36,8 @@ validator_menu() {
             "5" "Start Validator" \
             "6" "Stop Validator" \
             "7" "View Validator Status" \
-            "8" "Voluntary Exit (EXIT STAKING)" \
+            "8" "MEV Boost [$MEV_STATE]" \
+            "9" "Voluntary Exit (EXIT STAKING)" \
             "0" "Back to Main Menu" \
             3>&1 1>&2 2>&3)
 
@@ -45,7 +49,8 @@ validator_menu() {
             5) validator_start ;;
             6) validator_stop ;;
             7) validator_status ;;
-            8) validator_voluntary_exit ;;
+            8) mevboost_menu ;;
+            9) validator_voluntary_exit ;;
             0|"") return ;;
         esac
     done
@@ -442,6 +447,12 @@ validator_status() {
     INFO+="  Fee Recipient: ${FEE_RECIPIENT:-not set}\n"
     INFO+="  Graffiti: ${GRAFFITI:-Web3Pi}\n"
     INFO+="  Beacon Node: http://127.0.0.1:5052\n"
+    if [ "${MEV_BOOST_ENABLED:-false}" = "true" ]; then
+        MEV_SVC=$(systemctl is-active mev-boost 2>/dev/null)
+        INFO+="  MEV Boost: enabled (service: ${MEV_SVC:-inactive})\n"
+    else
+        INFO+="  MEV Boost: disabled\n"
+    fi
 
     # Beacon node connection check
     INFO+="\n▶ BEACON NODE\n"
