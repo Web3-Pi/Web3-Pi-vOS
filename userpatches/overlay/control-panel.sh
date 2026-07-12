@@ -47,7 +47,6 @@ main_menu() {
             "7" "Data Management" \
             "8" "System" \
             "9" "Validator Management" \
-            "A" "Arkiv [coming soon]" \
             "F" "Internet Failover (LTE)" \
             "0" "Exit" \
             3>&1 1>&2 2>&3)
@@ -62,7 +61,6 @@ main_menu() {
             7) data_menu ;;
             8) system_menu ;;
             9) validator_menu ;;
-            A) msg_box "Arkiv" "This feature is coming soon." ;;
             F) failover_menu ;;
             0|"") exit 0 ;;
         esac
