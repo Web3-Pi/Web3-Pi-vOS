@@ -265,9 +265,9 @@ validator_list() {
     for DIR in /home/signer/keys/validators/0x*/; do
         if [ -d "$DIR" ]; then
             PUBKEY=$(basename "$DIR")
-            # Shorten pubkey for display
-            SHORT="${PUBKEY:0:18}...${PUBKEY: -6}"
-            INFO+="  $SHORT\n"
+            # Full pubkey (98 chars) split across two lines to fit the dialog width
+            INFO+="  ${PUBKEY:0:50}\n"
+            INFO+="    ${PUBKEY:50}\n\n"
             ((COUNT++))
         fi
     done
@@ -275,7 +275,7 @@ validator_list() {
     if [ "$COUNT" -eq 0 ]; then
         INFO+="  No validators found.\n"
     else
-        INFO+="\n─────────────────────────────────────────────────────────\n"
+        INFO+="─────────────────────────────────────────────────────────\n"
         INFO+="Total: $COUNT validator(s)\n"
     fi
 
