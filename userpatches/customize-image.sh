@@ -90,10 +90,13 @@ mkdir -p /home/ethereum
 chown ethereum:ethereum /home/ethereum
 chmod 750 /home/ethereum
 
-# Staging directory for validator keystore import (easy SCP access)
+# Staging directory for validator keystore import (easy SCP access).
+# The build-time mkdir alone did not survive image assembly on some builds, so
+# also guarantee it at runtime via systemd-tmpfiles (recreated early every boot).
 mkdir -p /home/ethereum/validator_keys
 chown ethereum:ethereum /home/ethereum/validator_keys
 chmod 700 /home/ethereum/validator_keys
+install -D -m 644 /tmp/overlay/etc/tmpfiles.d/w3p-validator-keys.conf /etc/tmpfiles.d/w3p-validator-keys.conf
 #--------------------------------------------------------------------------------------------
 
 ## Configuration file #######################################################################
