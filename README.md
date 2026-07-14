@@ -194,6 +194,8 @@ sudo ./control-panel.sh
 | 7 | **Data Management** | Wipe Geth / Nimbus / signer / all data (with double-confirmation) |
 | 8 | **System** | Hostname, timezone, keyboard, EEPROM update, OC stress test, reboot/shutdown |
 | 9 | **Validator Management** | Import keys (SSH or USB), fee recipient, graffiti, start/stop, voluntary exit |
+| U | **Client Updates** | Check & apply Geth / Nimbus updates (APT), with safe service restarts |
+| F | **Internet Failover (LTE)** | WAN failover to an LTE modem |
 
 > A complete annotated tree of every submenu is in [desc.md §8](desc.md).
 

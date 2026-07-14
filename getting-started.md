@@ -129,8 +129,10 @@ The control panel provides a text-based menu for all operations:
 5. **Service Management** - Control Geth/Nimbus services
 6. **Monitoring** - Sync status, peers, resources
 7. **Data Management** - Wipe blockchain data
-8. **System** - Hardware settings, updates
+8. **System** - Hardware settings, firmware (EEPROM) updates
 9. **Validator Management** - Import keys, configure staking
+- **U. Client Updates** - Update Geth / Nimbus from their APT repos
+- **F. Internet Failover (LTE)** - WAN failover to an LTE modem
 
 ### Recommended: Overclocking Settings
 

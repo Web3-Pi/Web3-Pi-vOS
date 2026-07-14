@@ -151,13 +151,17 @@ The system employs a two-phase installation strategy:
 │   ├── lib/common.sh           # Shared functions
 │   └── modules/
 │       ├── data.sh             # Data management
+│       ├── failover.sh         # Internet failover (LTE)
+│       ├── lcd.sh              # LCD display service
 │       ├── luks.sh             # Encryption management
+│       ├── mevboost.sh         # MEV Boost management
 │       ├── monitoring.sh       # System monitoring
 │       ├── network.sh          # Network configuration
 │       ├── services.sh         # Service management
 │       ├── ssh.sh              # SSH security
 │       ├── sync.sh             # Checkpoint sync
 │       ├── system.sh           # System settings
+│       ├── updates.sh          # Client updates (Geth/Nimbus via APT)
 │       └── validator.sh        # Validator management
 ├── setup-luks.sh               # LUKS partition creation
 ├── unlock-luks.sh              # LUKS unlock
@@ -466,6 +470,9 @@ Web3 Pi Staking Control Panel
 │   ├── OC (Pi-Under-Pressure)
 │   │   ├── Install stress testing tool
 │   │   └── Run Stress Test
+│   ├── Web3 Pi UPS
+│   ├── Auto OC Detection
+│   ├── LCD Display
 │   ├── Reboot System
 │   └── Shutdown System
 │
@@ -479,14 +486,26 @@ Web3 Pi Staking Control Panel
 │   ├── Start Validator
 │   ├── Stop Validator
 │   ├── View Validator Status
+│   ├── MEV Boost
 │   └── Voluntary Exit (EXIT STAKING)
 │
-├── A. Arkiv [coming soon]
+├── U. Client Updates (Geth / Nimbus)
+│   ├── Check for Updates
+│   ├── Update Geth
+│   ├── Update Nimbus (Beacon + Validator Client)
+│   └── Update Both Clients
+│
+├── F. Internet Failover (LTE)
 │
 └── 0. Exit
 ```
 
 ### 8.2 Key Control Panel Features
+
+#### Client Updates
+- **APT-based**: Geth (ppa:ethereum/ethereum, suite pinned to noble) and Nimbus (apt.status.im) are upgraded per client with `apt-get install --only-upgrade` — never a blanket system upgrade
+- **Safe restarts**: only services that are currently running are restarted (a LUKS-locked validator stays stopped), with a post-restart health check; needrestart is suspended so the panel is the single place that bounces units
+- **Operator warnings**: Geth's slow clean stop (state flush) and the validator's ~2-3 epoch doppelganger pause are spelled out before confirming
 
 #### Monitoring (Real-time)
 - **Sync Status**: Auto-refreshes every 5 seconds, shows Geth block height, Nimbus slot, sync distance, backfill progress
