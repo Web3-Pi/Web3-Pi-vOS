@@ -15,22 +15,22 @@ RestartSec=10
 EnvironmentFile=/opt/web3pi/config
 
 # mev-boost command
-# MEV_RELAYS comes from the EnvironmentFile and holds a comma-separated list of
-# relay URLs (https://0x<pubkey>@host) — commas keep it a single -relays argument,
-# so it is referenced WITH braces (no word splitting wanted, unlike the flag
-# fragments in the nimbus units). -${NETWORK} expands to -mainnet/-hoodi/-holesky,
-# same pattern as --${NETWORK} in geth.service.
+# W3P_MEV_RELAYS comes from the EnvironmentFile and holds a comma-separated list
+# of relay URLs (https://0x<pubkey>@host) — commas keep it a single -relays
+# argument, so it is referenced WITH braces (no word splitting wanted, unlike the
+# flag fragments in the nimbus units). -${W3P_NETWORK} expands to
+# -mainnet/-hoodi/-holesky, same pattern as --${W3P_NETWORK} in geth.service.
 # -relay-check makes startup fail (and systemd retry) until a relay responds.
 # Manage via control-panel.sh -> Validator Management -> MEV Boost.
 # Fail fast with a clear log line (instead of a flag-parse error) when no
 # relays are configured, e.g. a raw `systemctl start` while MEV Boost is
 # disabled in the control panel.
-ExecStartPre=/bin/sh -c 'test -n "$MEV_RELAYS"'
+ExecStartPre=/bin/sh -c 'test -n "$W3P_MEV_RELAYS"'
 ExecStart=/usr/local/bin/mev-boost \
-    -${NETWORK} \
+    -${W3P_NETWORK} \
     -addr 127.0.0.1:18550 \
     -relay-check \
-    -relays ${MEV_RELAYS}
+    -relays ${W3P_MEV_RELAYS}
 
 # Security hardening (stateless process: no writable paths needed)
 NoNewPrivileges=yes

@@ -55,10 +55,16 @@ class EthCollector(Collector):
 
     @staticmethod
     def _network():
+        # Config keys carry the W3P_ prefix since 2026-07; accept the legacy
+        # unprefixed key too so the dashboard still works on a not-yet-migrated
+        # device. Prefixed key wins regardless of file order.
+        legacy = None
         for line in (read_file(W3P_CONFIG, "") or "").splitlines():
-            if line.startswith("NETWORK="):
+            if line.startswith("W3P_NETWORK="):
                 return line.split("=", 1)[1].strip() or "?"
-        return "?"
+            if line.startswith("NETWORK="):
+                legacy = line.split("=", 1)[1].strip()
+        return legacy or "?"
 
     def collect(self):
         d = {"services": self._services()}

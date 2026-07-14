@@ -21,10 +21,10 @@ validator_menu() {
         fi
 
         # Shorten fee recipient for display
-        FEE_SHORT="${FEE_RECIPIENT:0:10}...${FEE_RECIPIENT: -4}"
+        FEE_SHORT="${W3P_FEE_RECIPIENT:0:10}...${W3P_FEE_RECIPIENT: -4}"
 
         MEV_STATE="off"
-        [ "${MEV_BOOST_ENABLED:-false}" = "true" ] && MEV_STATE="on"
+        [ "${W3P_MEV_BOOST_ENABLED:-false}" = "true" ] && MEV_STATE="on"
 
         CHOICE=$(whiptail --title "Validator Management" \
             --menu "Status: $VC_STATUS | LUKS: $LUKS_MOUNTED | Validators: $VALIDATOR_COUNT" \
@@ -32,7 +32,7 @@ validator_menu() {
             "1" "Import Validator Keys" \
             "2" "List Validators" \
             "3" "Configure Fee Recipient [$FEE_SHORT]" \
-            "4" "Configure Graffiti [$GRAFFITI]" \
+            "4" "Configure Graffiti [$W3P_GRAFFITI]" \
             "5" "Start Validator" \
             "6" "Stop Validator" \
             "7" "View Validator Status" \
@@ -290,7 +290,7 @@ validator_list() {
 validator_fee_recipient() {
     load_config
 
-    CURRENT="${FEE_RECIPIENT:-0x0000000000000000000000000000000000000000}"
+    CURRENT="${W3P_FEE_RECIPIENT:-0x0000000000000000000000000000000000000000}"
 
     NEW_ADDR=$(whiptail --title "Configure Fee Recipient" \
         --inputbox "Enter Ethereum address for block rewards:\n\nCurrent: $CURRENT\n\nThis address will receive transaction fees from blocks your validator proposes." \
@@ -310,7 +310,7 @@ validator_fee_recipient() {
         return
     fi
 
-    FEE_RECIPIENT="$NEW_ADDR"
+    W3P_FEE_RECIPIENT="$NEW_ADDR"
     save_config
 
     msg_box "Fee Recipient Set" "Fee recipient updated to:\n$NEW_ADDR\n\nRestart the validator for changes to take effect."
@@ -319,7 +319,7 @@ validator_fee_recipient() {
 validator_graffiti() {
     load_config
 
-    CURRENT="${GRAFFITI:-Web3Pi}"
+    CURRENT="${W3P_GRAFFITI:-Web3Pi}"
 
     NEW_GRAFFITI=$(whiptail --title "Configure Graffiti" \
         --inputbox "Enter graffiti message (max 32 characters):\n\nThis text appears in blocks your validator proposes.\n\nCurrent: $CURRENT" \
@@ -339,7 +339,7 @@ validator_graffiti() {
         return
     fi
 
-    GRAFFITI="$NEW_GRAFFITI"
+    W3P_GRAFFITI="$NEW_GRAFFITI"
     save_config
 
     msg_box "Graffiti Set" "Graffiti updated to:\n$NEW_GRAFFITI\n\nRestart the validator for changes to take effect."
@@ -366,7 +366,7 @@ validator_start() {
     fi
 
     # Warn about zero fee recipient
-    if [ "$FEE_RECIPIENT" = "0x0000000000000000000000000000000000000000" ]; then
+    if [ "$W3P_FEE_RECIPIENT" = "0x0000000000000000000000000000000000000000" ]; then
         if ! yesno_box "Warning: Zero Fee Recipient" "Fee recipient is set to zero address!\n\nTransaction fees will be LOST.\n\nConfigure fee recipient first?\n\n(No = start anyway)"; then
             # User chose No, proceed anyway
             :
@@ -389,7 +389,7 @@ validator_start() {
     sleep 2
 
     if systemctl is-active --quiet nimbus-validator; then
-        msg_box "Validator Started" "Nimbus validator started successfully!\n\nValidators: $VALIDATOR_COUNT\nFee Recipient: $FEE_RECIPIENT\nGraffiti: $GRAFFITI\n\nView logs: journalctl -u nimbus-validator -f"
+        msg_box "Validator Started" "Nimbus validator started successfully!\n\nValidators: $VALIDATOR_COUNT\nFee Recipient: $W3P_FEE_RECIPIENT\nGraffiti: $W3P_GRAFFITI\n\nView logs: journalctl -u nimbus-validator -f"
     else
         msg_box "Start Failed" "Failed to start validator.\n\nCheck logs: journalctl -u nimbus-validator -n 50"
     fi
@@ -444,10 +444,10 @@ validator_status() {
     # Configuration
     INFO+="\n▶ CONFIGURATION\n"
     INFO+="─────────────────────────────────────────────────────────\n"
-    INFO+="  Fee Recipient: ${FEE_RECIPIENT:-not set}\n"
-    INFO+="  Graffiti: ${GRAFFITI:-Web3Pi}\n"
+    INFO+="  Fee Recipient: ${W3P_FEE_RECIPIENT:-not set}\n"
+    INFO+="  Graffiti: ${W3P_GRAFFITI:-Web3Pi}\n"
     INFO+="  Beacon Node: http://127.0.0.1:5052\n"
-    if [ "${MEV_BOOST_ENABLED:-false}" = "true" ]; then
+    if [ "${W3P_MEV_BOOST_ENABLED:-false}" = "true" ]; then
         MEV_SVC=$(systemctl is-active mev-boost 2>/dev/null)
         INFO+="  MEV Boost: enabled (service: ${MEV_SVC:-inactive})\n"
     else
@@ -565,7 +565,7 @@ validator_voluntary_exit() {
     echo ""
 
     if nimbus_beacon_node deposits exit \
-        --network="$NETWORK" \
+        --network="$W3P_NETWORK" \
         --validator="$SELECTED_KS" \
         --rest-url=http://127.0.0.1:5052; then
         echo ""

@@ -100,7 +100,7 @@ install -D -m 644 /tmp/overlay/etc/tmpfiles.d/w3p-validator-keys.conf /etc/tmpfi
 #--------------------------------------------------------------------------------------------
 
 ## Configuration file #######################################################################
-# Central configuration file (NETWORK=hoodi/mainnet)
+# Central configuration file (W3P_NETWORK=hoodi/mainnet)
 cp /tmp/overlay/config /opt/web3pi/config
 #--------------------------------------------------------------------------------------------
 
@@ -225,7 +225,7 @@ cp /tmp/overlay/nimbus-validator.service /etc/systemd/system/nimbus-validator.se
 # w3p-ups below: this binary sits between the validator and the relays, so pin it).
 # Non-fatal on download failure — the control-panel refuses to enable MEV Boost
 # when the binary is missing. Not enabled here; the user turns it on via
-# control-panel (Validator Management -> MEV Boost), which fills MEV_RELAYS and
+# control-panel (Validator Management -> MEV Boost), which fills W3P_MEV_RELAYS and
 # the nimbus payload-builder flag fragments in /opt/web3pi/config.
 MEV_BOOST_VERSION=1.12
 MEV_BOOST_SHA256=78afdb4ba507595b933ec5925f2b565a6f456216c5e8f1f08e40dbe0420fb4c4

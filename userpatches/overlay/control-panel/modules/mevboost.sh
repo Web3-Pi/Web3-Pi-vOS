@@ -57,15 +57,15 @@ mevboost_menu() {
         # garble the value into two lines
         SVC_STATUS=$(systemctl is-active mev-boost 2>/dev/null)
         SVC_STATUS=${SVC_STATUS:-inactive}
-        MEV_ENABLED="${MEV_BOOST_ENABLED:-false}"
+        MEV_ENABLED="${W3P_MEV_BOOST_ENABLED:-false}"
         RELAY_COUNT=0
-        [ -n "$MEV_RELAYS" ] && RELAY_COUNT=$(echo "$MEV_RELAYS" | tr ',' '\n' | grep -c .)
+        [ -n "$W3P_MEV_RELAYS" ] && RELAY_COUNT=$(echo "$W3P_MEV_RELAYS" | tr ',' '\n' | grep -c .)
 
         TOGGLE_LABEL="Enable MEV Boost"
         [ "$MEV_ENABLED" = "true" ] && TOGGLE_LABEL="Disable MEV Boost"
 
         CHOICE=$(whiptail --title "MEV Boost" \
-            --menu "Enabled: $MEV_ENABLED | Service: $SVC_STATUS | Relays: $RELAY_COUNT | Net: $NETWORK" \
+            --menu "Enabled: $MEV_ENABLED | Service: $SVC_STATUS | Relays: $RELAY_COUNT | Net: $W3P_NETWORK" \
             $TERM_HEIGHT $TERM_WIDTH $LIST_HEIGHT \
             "1" "$TOGGLE_LABEL" \
             "2" "Select Relays" \
@@ -122,11 +122,11 @@ mevboost_restart_nimbus() {
 mevboost_toggle() {
     load_config
 
-    if [ "${MEV_BOOST_ENABLED:-false}" = "true" ]; then
+    if [ "${W3P_MEV_BOOST_ENABLED:-false}" = "true" ]; then
         if ! yesno_box "Disable MEV Boost" "Disable MEV Boost?\n\nThe mev-boost service will be stopped and Nimbus will\nreturn to local block production only (restart required)."; then
             return
         fi
-        MEV_BOOST_ENABLED=false
+        W3P_MEV_BOOST_ENABLED=false
         save_config
         systemctl disable --now mev-boost 2>/dev/null
         RESTARTED=$(mevboost_restart_nimbus)
@@ -140,15 +140,15 @@ mevboost_toggle() {
         return
     fi
 
-    if [ -z "$(mevboost_catalog "$NETWORK")" ] && [ -z "$MEV_RELAYS" ]; then
-        msg_box "No Relays on $NETWORK" "No MEV relays operate on network '$NETWORK'.\n\n(Holesky was shut down in September 2025 —\nuse hoodi for validator testing.)"
+    if [ -z "$(mevboost_catalog "$W3P_NETWORK")" ] && [ -z "$W3P_MEV_RELAYS" ]; then
+        msg_box "No Relays on $W3P_NETWORK" "No MEV relays operate on network '$W3P_NETWORK'.\n\n(Holesky was shut down in September 2025 —\nuse hoodi for validator testing.)"
         return
     fi
 
-    if [ -z "$MEV_RELAYS" ]; then
+    if [ -z "$W3P_MEV_RELAYS" ]; then
         mevboost_select_relays
         load_config
-        if [ -z "$MEV_RELAYS" ]; then
+        if [ -z "$W3P_MEV_RELAYS" ]; then
             msg_box "No Relays Selected" "MEV Boost needs at least one relay.\n\nNot enabled."
             return
         fi
@@ -166,7 +166,7 @@ mevboost_toggle() {
         return
     fi
 
-    MEV_BOOST_ENABLED=true
+    W3P_MEV_BOOST_ENABLED=true
     save_config
     # enable + restart (not enable --now): an already-running unit would make
     # --now a no-op and keep serving a stale relay list; restart re-reads the
@@ -176,7 +176,7 @@ mevboost_toggle() {
 
     if ! mevboost_wait_ready; then
         # Roll back so the nimbus units are not left pointing at a dead builder.
-        MEV_BOOST_ENABLED=false
+        W3P_MEV_BOOST_ENABLED=false
         save_config
         systemctl disable --now mev-boost 2>/dev/null
         msg_box "Start Failed" "mev-boost failed to start — MEV Boost rolled back\nto disabled.\n\nCheck: journalctl -u mev-boost -n 50\n(-relay-check fails startup when no relay responds)"
@@ -184,7 +184,7 @@ mevboost_toggle() {
     fi
 
     RESTARTED=$(mevboost_restart_nimbus)
-    RELAY_COUNT=$(echo "$MEV_RELAYS" | tr ',' '\n' | grep -c .)
+    RELAY_COUNT=$(echo "$W3P_MEV_RELAYS" | tr ',' '\n' | grep -c .)
     msg_box "MEV Boost Enabled" "mev-boost running on $MEV_BOOST_LISTEN\nRelays: $RELAY_COUNT\n\nNimbus restarted with payload-builder flags: $RESTARTED\n\nNote: if the validator was not running, it picks up the\nflags automatically on its next start."
 }
 
@@ -192,7 +192,7 @@ mevboost_toggle() {
 # Nimbus does NOT need a restart for relay-only changes (builder URL unchanged).
 mevboost_apply_relay_change() {
     load_config
-    [ "${MEV_BOOST_ENABLED:-false}" = "true" ] || return 0
+    [ "${W3P_MEV_BOOST_ENABLED:-false}" = "true" ] || return 0
     if ! systemctl restart mev-boost 2>/dev/null; then
         msg_box "Restart Failed" "Could not restart mev-boost.\n\nCheck: journalctl -u mev-boost -n 50"
         return
@@ -207,22 +207,22 @@ mevboost_apply_relay_change() {
 mevboost_select_relays() {
     load_config
 
-    CATALOG=$(mevboost_catalog "$NETWORK")
+    CATALOG=$(mevboost_catalog "$W3P_NETWORK")
     if [ -z "$CATALOG" ]; then
-        msg_box "No Relays on $NETWORK" "No MEV relays operate on network '$NETWORK'.\n\n(Holesky was shut down in September 2025 —\nuse hoodi for validator testing.)"
+        msg_box "No Relays on $W3P_NETWORK" "No MEV relays operate on network '$W3P_NETWORK'.\n\n(Holesky was shut down in September 2025 —\nuse hoodi for validator testing.)"
         return
     fi
 
     # Build the checklist: catalog entries first, preserving the current
     # selection (fresh setup -> catalog defaults), then any custom relays
-    # already in MEV_RELAYS that are not in the catalog (always ON).
+    # already in W3P_MEV_RELAYS that are not in the catalog (always ON).
     local urls=() items=() idx=0
     local name url def state
     while IFS='|' read -r name url def; do
         [ -z "$url" ] && continue
-        if [ -n "$MEV_RELAYS" ]; then
+        if [ -n "$W3P_MEV_RELAYS" ]; then
             state="OFF"
-            [[ ",$MEV_RELAYS," == *",$url,"* ]] && state="ON"
+            [[ ",$W3P_MEV_RELAYS," == *",$url,"* ]] && state="ON"
         else
             state="$def"
         fi
@@ -232,7 +232,7 @@ mevboost_select_relays() {
     done <<< "$CATALOG"
 
     local r known
-    for r in ${MEV_RELAYS//,/ }; do
+    for r in ${W3P_MEV_RELAYS//,/ }; do
         known=0
         for url in "${urls[@]}"; do
             [ "$r" = "$url" ] && known=1 && break
@@ -244,7 +244,7 @@ mevboost_select_relays() {
         fi
     done
 
-    SELECTION=$(whiptail --title "Select MEV Relays [$NETWORK]" \
+    SELECTION=$(whiptail --title "Select MEV Relays [$W3P_NETWORK]" \
         --checklist "Space = toggle, Enter = save.\n'filters OFAC' relays censor sanctioned transactions." \
         $TERM_HEIGHT $TERM_WIDTH $LIST_HEIGHT \
         "${items[@]}" \
@@ -264,9 +264,9 @@ mevboost_select_relays() {
         return
     fi
 
-    [ "$new" = "$MEV_RELAYS" ] && return
+    [ "$new" = "$W3P_MEV_RELAYS" ] && return
 
-    MEV_RELAYS="$new"
+    W3P_MEV_RELAYS="$new"
     save_config
     mevboost_apply_relay_change
 }
@@ -282,21 +282,21 @@ mevboost_add_custom() {
         return
     fi
 
-    if [[ ",$MEV_RELAYS," == *",$NEW_RELAY,"* ]]; then
+    if [[ ",$W3P_MEV_RELAYS," == *",$NEW_RELAY,"* ]]; then
         msg_box "Already Added" "This relay is already in the list."
         return
     fi
 
-    MEV_RELAYS="${MEV_RELAYS:+$MEV_RELAYS,}$NEW_RELAY"
+    W3P_MEV_RELAYS="${W3P_MEV_RELAYS:+$W3P_MEV_RELAYS,}$NEW_RELAY"
     save_config
     mevboost_apply_relay_change
-    msg_box "Relay Added" "Added:\n  ${NEW_RELAY#*@}\n\nTotal relays: $(echo "$MEV_RELAYS" | tr ',' '\n' | grep -c .)"
+    msg_box "Relay Added" "Added:\n  ${NEW_RELAY#*@}\n\nTotal relays: $(echo "$W3P_MEV_RELAYS" | tr ',' '\n' | grep -c .)"
 }
 
 mevboost_test_relays() {
     load_config
 
-    if [ -z "$MEV_RELAYS" ]; then
+    if [ -z "$W3P_MEV_RELAYS" ]; then
         msg_box "No Relays" "No relays configured.\n\nUse 'Select Relays' first."
         return
     fi
@@ -309,7 +309,7 @@ mevboost_test_relays() {
     INFO="Relay status:\n"
     INFO+="─────────────────────────────────────────────────────────\n"
     local r host code
-    for r in ${MEV_RELAYS//,/ }; do
+    for r in ${W3P_MEV_RELAYS//,/ }; do
         host="${r#*@}"
         echo "  checking $host ..."
         code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 "https://${host}/eth/v1/builder/status" 2>/dev/null)
@@ -343,16 +343,16 @@ mevboost_status() {
 
     INFO+="\n▶ CONFIGURATION\n"
     INFO+="─────────────────────────────────────────────────────────\n"
-    INFO+="  Enabled: ${MEV_BOOST_ENABLED:-false}\n"
-    INFO+="  Network: $NETWORK\n"
-    INFO+="  Nimbus BN flags: ${MEV_BOOST_BN_FLAGS:-none}\n"
-    INFO+="  Nimbus VC flags: ${MEV_BOOST_VC_FLAGS:-none}\n"
+    INFO+="  Enabled: ${W3P_MEV_BOOST_ENABLED:-false}\n"
+    INFO+="  Network: $W3P_NETWORK\n"
+    INFO+="  Nimbus BN flags: ${W3P_MEV_BOOST_BN_FLAGS:-none}\n"
+    INFO+="  Nimbus VC flags: ${W3P_MEV_BOOST_VC_FLAGS:-none}\n"
 
     INFO+="\n▶ RELAYS\n"
     INFO+="─────────────────────────────────────────────────────────\n"
-    if [ -n "$MEV_RELAYS" ]; then
+    if [ -n "$W3P_MEV_RELAYS" ]; then
         local r
-        for r in ${MEV_RELAYS//,/ }; do
+        for r in ${W3P_MEV_RELAYS//,/ }; do
             INFO+="  ${r#*@}\n"
         done
     else

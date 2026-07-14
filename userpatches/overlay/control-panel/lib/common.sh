@@ -38,20 +38,51 @@ check_root() {
 load_config() {
     if [ -f "$CONFIG_FILE" ]; then
         source "$CONFIG_FILE"
+        _migrate_legacy_config_names
     fi
 }
 
+# Config keys were renamed to the W3P_ prefix (2026-07-13): geth scans its own
+# environment for GETH_*-named variables and maps them onto flags, so our
+# GETH_PORT was silently consumed and GETH_HISTORY_FLAG logged
+# "Unknown config environment variable" on every start. A config written by an
+# older image still has the old names — map them onto the new ones so the first
+# save_config migrates the file in place.
+# Guard choice matters: for keys that can never be legitimately empty the
+# ${W3P_X:-} form also repairs a set-but-empty variable (e.g. left behind by a
+# cancelled whiptail dialog) instead of letting save_config replace it with the
+# default. Only W3P_GETH_HISTORY_FLAG ("off"), W3P_MEV_RELAYS (no relays) and
+# the two derived MEV fragments are legitimately empty, so they use the ${x+x}
+# form to preserve an intentional empty value.
+_migrate_legacy_config_names() {
+    [ -z "${W3P_NETWORK:-}" ]           && [ -n "${NETWORK:-}" ]           && W3P_NETWORK="$NETWORK"
+    [ -z "${W3P_GETH_PORT:-}" ]         && [ -n "${GETH_PORT:-}" ]         && W3P_GETH_PORT="$GETH_PORT"
+    [ -z "${W3P_NIMBUS_PORT:-}" ]       && [ -n "${NIMBUS_PORT:-}" ]       && W3P_NIMBUS_PORT="$NIMBUS_PORT"
+    [ -z "${W3P_FEE_RECIPIENT:-}" ]     && [ -n "${FEE_RECIPIENT:-}" ]     && W3P_FEE_RECIPIENT="$FEE_RECIPIENT"
+    [ -z "${W3P_GRAFFITI:-}" ]          && [ -n "${GRAFFITI:-}" ]          && W3P_GRAFFITI="$GRAFFITI"
+    [ -z "${W3P_MEV_BOOST_ENABLED:-}" ] && [ -n "${MEV_BOOST_ENABLED:-}" ] && W3P_MEV_BOOST_ENABLED="$MEV_BOOST_ENABLED"
+    [ -z "${W3P_GETH_HISTORY_FLAG+x}" ] && [ -n "${GETH_HISTORY_FLAG+x}" ] && W3P_GETH_HISTORY_FLAG="$GETH_HISTORY_FLAG"
+    [ -z "${W3P_MEV_RELAYS+x}" ]        && [ -n "${MEV_RELAYS+x}" ]        && W3P_MEV_RELAYS="$MEV_RELAYS"
+    # Derived fragments: functionally re-derived by save_config, mapped here only
+    # so status screens don't show "none" next to "Enabled: true" before the
+    # first save migrates the file.
+    [ -z "${W3P_MEV_BOOST_BN_FLAGS+x}" ] && [ -n "${MEV_BOOST_BN_FLAGS+x}" ] && W3P_MEV_BOOST_BN_FLAGS="$MEV_BOOST_BN_FLAGS"
+    [ -z "${W3P_MEV_BOOST_VC_FLAGS+x}" ] && [ -n "${MEV_BOOST_VC_FLAGS+x}" ] && W3P_MEV_BOOST_VC_FLAGS="$MEV_BOOST_VC_FLAGS"
+    return 0
+}
+
 save_config() {
-    # Preserve an explicitly-empty GETH_HISTORY_FLAG (user chose "off"): the
+    # Preserve an explicitly-empty W3P_GETH_HISTORY_FLAG (user chose "off"): the
     # colon-less default only fires for a truly-unset variable (upgrade path),
     # not for an intentional empty value.
-    local geth_history_flag="${GETH_HISTORY_FLAG-"--history.chain=postprague"}"
+    local geth_history_flag="${W3P_GETH_HISTORY_FLAG-"--history.chain=postprague"}"
 
-    # MEV-Boost: MEV_BOOST_ENABLED is the single source of truth; the per-unit
-    # flag fragments are re-derived on every save so they can never disagree
-    # with it. The nimbus units reference them WITHOUT braces (word-split,
-    # empty -> zero args — same trick as GETH_HISTORY_FLAG in geth.service).
-    local mev_boost_enabled="${MEV_BOOST_ENABLED:-false}"
+    # MEV-Boost: W3P_MEV_BOOST_ENABLED is the single source of truth; the
+    # per-unit flag fragments are re-derived on every save so they can never
+    # disagree with it. The nimbus units reference them WITHOUT braces
+    # (word-split, empty -> zero args — same trick as W3P_GETH_HISTORY_FLAG in
+    # geth.service).
+    local mev_boost_enabled="${W3P_MEV_BOOST_ENABLED:-false}"
     local mev_bn_flags="" mev_vc_flags=""
     if [ "$mev_boost_enabled" = "true" ]; then
         mev_bn_flags="--payload-builder=true --payload-builder-url=http://127.0.0.1:18550"
@@ -59,12 +90,14 @@ save_config() {
     fi
     cat > "$CONFIG_FILE" << EOF
 # Web3 Pi Staking Configuration
+# All keys use the W3P_ prefix: geth maps GETH_*-named environment variables
+# onto its own flags, so unprefixed names collide with its namespace.
 
 # Network: hoodi, holesky, or mainnet
-NETWORK=${NETWORK:-hoodi}
+W3P_NETWORK=${W3P_NETWORK:-hoodi}
 
 # Geth P2P port (TCP/UDP)
-GETH_PORT=${GETH_PORT:-30303}
+W3P_GETH_PORT=${W3P_GETH_PORT:-30303}
 
 # Geth chain-history retention (disk usage).
 # Full flag passed to geth, or empty to omit it (Geth default = keep all history).
@@ -73,10 +106,10 @@ GETH_PORT=${GETH_PORT:-30303}
 #   --history.chain=all         keep full history (Geth default, most disk)
 #   (empty)                     do not pass the flag
 # Toggle via control-panel.sh -> Eth Network Configuration -> Geth Chain History.
-GETH_HISTORY_FLAG="${geth_history_flag}"
+W3P_GETH_HISTORY_FLAG="${geth_history_flag}"
 
 # Nimbus P2P port (TCP/UDP)
-NIMBUS_PORT=${NIMBUS_PORT:-9000}
+W3P_NIMBUS_PORT=${W3P_NIMBUS_PORT:-9000}
 
 # NOTE: If you change ports, update /etc/nftables.conf:
 #   Change 'dport <old_port>' to 'dport <new_port>'
@@ -86,24 +119,24 @@ NIMBUS_PORT=${NIMBUS_PORT:-9000}
 
 # Validator Configuration
 # Fee recipient address for block rewards (REQUIRED for validator)
-FEE_RECIPIENT=${FEE_RECIPIENT:-0x0000000000000000000000000000000000000000}
+W3P_FEE_RECIPIENT=${W3P_FEE_RECIPIENT:-0x0000000000000000000000000000000000000000}
 
 # Graffiti message (max 32 characters, visible in proposed blocks)
-GRAFFITI=${GRAFFITI:-Web3Pi}
+W3P_GRAFFITI=${W3P_GRAFFITI:-Web3Pi}
 
 # MEV-Boost (external block builder)
 # Toggle + relay list via control-panel.sh -> Validator Management -> MEV Boost.
-MEV_BOOST_ENABLED=${mev_boost_enabled}
+W3P_MEV_BOOST_ENABLED=${mev_boost_enabled}
 
 # Comma-separated relay URLs (https://0x<pubkey>@host). Network-specific:
-# switching NETWORK resets this to the new network's defaults.
-MEV_RELAYS="${MEV_RELAYS}"
+# switching W3P_NETWORK resets this to the new network's defaults.
+W3P_MEV_RELAYS="${W3P_MEV_RELAYS}"
 
-# Derived from MEV_BOOST_ENABLED — do not edit by hand (rewritten on every
+# Derived from W3P_MEV_BOOST_ENABLED — do not edit by hand (rewritten on every
 # config save). The nimbus units reference these WITHOUT braces so an empty
-# value expands to zero arguments (same trick as GETH_HISTORY_FLAG above).
-MEV_BOOST_BN_FLAGS="${mev_bn_flags}"
-MEV_BOOST_VC_FLAGS="${mev_vc_flags}"
+# value expands to zero arguments (same trick as W3P_GETH_HISTORY_FLAG above).
+W3P_MEV_BOOST_BN_FLAGS="${mev_bn_flags}"
+W3P_MEV_BOOST_VC_FLAGS="${mev_vc_flags}"
 EOF
 }
 

@@ -7,7 +7,7 @@ network_menu() {
     while true; do
         load_config
         CHOICE=$(whiptail --title "Network Configuration" \
-            --menu "Current: NETWORK=$NETWORK, GETH_PORT=$GETH_PORT, NIMBUS_PORT=$NIMBUS_PORT" \
+            --menu "Current: W3P_NETWORK=$W3P_NETWORK, W3P_GETH_PORT=$W3P_GETH_PORT, W3P_NIMBUS_PORT=$W3P_NIMBUS_PORT" \
             $TERM_HEIGHT $TERM_WIDTH $LIST_HEIGHT \
             "1" "Select Network" \
             "2" "Configure Geth P2P Port" \
@@ -30,14 +30,14 @@ network_menu() {
 
 # Geth chain-history retention. Controls how much pre-Merge/pre-Prague history
 # Geth keeps on disk (validator duties are unaffected). Stored in the config as
-# the full GETH_HISTORY_FLAG fragment, or empty to omit the flag entirely.
+# the full W3P_GETH_HISTORY_FLAG fragment, or empty to omit the flag entirely.
 network_geth_history() {
     load_config
 
     # Derive the current selection token from the stored flag. Colon-less default
     # matches save_config: an explicit empty value means "off", only a truly-unset
     # variable falls back to postprague.
-    local current_flag="${GETH_HISTORY_FLAG-"--history.chain=postprague"}"
+    local current_flag="${W3P_GETH_HISTORY_FLAG-"--history.chain=postprague"}"
     local current_token
     if [ -z "$current_flag" ]; then
         current_token="off"
@@ -71,7 +71,7 @@ network_geth_history() {
         return
     fi
 
-    GETH_HISTORY_FLAG="$new_flag"
+    W3P_GETH_HISTORY_FLAG="$new_flag"
     save_config
 
     local applied
@@ -92,15 +92,21 @@ network_geth_history() {
 
 network_select() {
     load_config
-    local OLD_NETWORK="$NETWORK"
-    NETWORK=$(whiptail --title "Select Network" \
+    local OLD_NETWORK="$W3P_NETWORK"
+    # Capture into a local and only assign W3P_NETWORK on a real choice:
+    # a cancelled dialog returns "", and assigning that would leave
+    # W3P_NETWORK set-but-empty — save_config would then default it to
+    # hoodi, silently switching the configured network.
+    local NEW_NETWORK
+    NEW_NETWORK=$(whiptail --title "Select Network" \
         --radiolist "Choose Ethereum network:" $TERM_HEIGHT $TERM_WIDTH 4 \
-        "hoodi" "Testnet (recommended for testing)" $([ "$NETWORK" = "hoodi" ] && echo "ON" || echo "OFF") \
-        "holesky" "Testnet (alternative)" $([ "$NETWORK" = "holesky" ] && echo "ON" || echo "OFF") \
-        "mainnet" "Production (real ETH!)" $([ "$NETWORK" = "mainnet" ] && echo "ON" || echo "OFF") \
+        "hoodi" "Testnet (recommended for testing)" $([ "$W3P_NETWORK" = "hoodi" ] && echo "ON" || echo "OFF") \
+        "holesky" "Testnet (alternative)" $([ "$W3P_NETWORK" = "holesky" ] && echo "ON" || echo "OFF") \
+        "mainnet" "Production (real ETH!)" $([ "$W3P_NETWORK" = "mainnet" ] && echo "ON" || echo "OFF") \
         3>&1 1>&2 2>&3)
 
-    if [ -n "$NETWORK" ]; then
+    if [ -n "$NEW_NETWORK" ]; then
+        W3P_NETWORK="$NEW_NETWORK"
         # MEV relays are network-specific: on a network change replace the list
         # with the new network's defaults (mevboost.sh). A network with no
         # relays (holesky, shut down 2025) force-disables MEV Boost.
@@ -108,30 +114,30 @@ network_select() {
         # because a restart re-reads EnvironmentFile from disk (a restart before
         # the save would relaunch mev-boost with the OLD network/relays).
         local MEV_NOTE="" MEV_RESTART=false
-        if [ "$NETWORK" != "$OLD_NETWORK" ] && { [ "${MEV_BOOST_ENABLED:-false}" = "true" ] || [ -n "$MEV_RELAYS" ]; }; then
-            MEV_RELAYS="$(mevboost_default_relays "$NETWORK")"
-            if [ -z "$MEV_RELAYS" ] && [ "${MEV_BOOST_ENABLED:-false}" = "true" ]; then
-                MEV_BOOST_ENABLED=false
+        if [ "$W3P_NETWORK" != "$OLD_NETWORK" ] && { [ "${W3P_MEV_BOOST_ENABLED:-false}" = "true" ] || [ -n "$W3P_MEV_RELAYS" ]; }; then
+            W3P_MEV_RELAYS="$(mevboost_default_relays "$W3P_NETWORK")"
+            if [ -z "$W3P_MEV_RELAYS" ] && [ "${W3P_MEV_BOOST_ENABLED:-false}" = "true" ]; then
+                W3P_MEV_BOOST_ENABLED=false
                 systemctl disable --now mev-boost 2>/dev/null
-                MEV_NOTE="\n\nMEV Boost: DISABLED (no relays operate on $NETWORK)"
-            elif [ -n "$MEV_RELAYS" ]; then
-                MEV_NOTE="\n\nMEV relays reset to $NETWORK defaults."
-                [ "${MEV_BOOST_ENABLED:-false}" = "true" ] && MEV_RESTART=true
+                MEV_NOTE="\n\nMEV Boost: DISABLED (no relays operate on $W3P_NETWORK)"
+            elif [ -n "$W3P_MEV_RELAYS" ]; then
+                MEV_NOTE="\n\nMEV relays reset to $W3P_NETWORK defaults."
+                [ "${W3P_MEV_BOOST_ENABLED:-false}" = "true" ] && MEV_RESTART=true
             fi
         fi
         save_config
         [ "$MEV_RESTART" = "true" ] && systemctl try-restart mev-boost 2>/dev/null
-        msg_box "Network Changed" "Network set to: $NETWORK\n\nRemember to:\n1. Run trusted node sync\n2. Restart services$MEV_NOTE"
+        msg_box "Network Changed" "Network set to: $W3P_NETWORK\n\nRemember to:\n1. Run trusted node sync\n2. Restart services$MEV_NOTE"
     fi
 }
 
 network_geth_port() {
     load_config
-    NEW_PORT=$(input_box "Geth P2P Port" "Enter Geth P2P port (current: $GETH_PORT):" "$GETH_PORT")
+    NEW_PORT=$(input_box "Geth P2P Port" "Enter Geth P2P port (current: $W3P_GETH_PORT):" "$W3P_GETH_PORT")
 
-    if [ -n "$NEW_PORT" ] && [ "$NEW_PORT" != "$GETH_PORT" ]; then
-        OLD_PORT=$GETH_PORT
-        GETH_PORT=$NEW_PORT
+    if [ -n "$NEW_PORT" ] && [ "$NEW_PORT" != "$W3P_GETH_PORT" ]; then
+        OLD_PORT=$W3P_GETH_PORT
+        W3P_GETH_PORT=$NEW_PORT
         save_config
         msg_box "Port Changed" "Geth port changed: $OLD_PORT -> $NEW_PORT\n\nUpdate /etc/nftables.conf:\n  Change 'dport $OLD_PORT' to 'dport $NEW_PORT'\n  Then: sudo systemctl restart nftables"
     fi
@@ -139,11 +145,11 @@ network_geth_port() {
 
 network_nimbus_port() {
     load_config
-    NEW_PORT=$(input_box "Nimbus P2P Port" "Enter Nimbus P2P port (current: $NIMBUS_PORT):" "$NIMBUS_PORT")
+    NEW_PORT=$(input_box "Nimbus P2P Port" "Enter Nimbus P2P port (current: $W3P_NIMBUS_PORT):" "$W3P_NIMBUS_PORT")
 
-    if [ -n "$NEW_PORT" ] && [ "$NEW_PORT" != "$NIMBUS_PORT" ]; then
-        OLD_PORT=$NIMBUS_PORT
-        NIMBUS_PORT=$NEW_PORT
+    if [ -n "$NEW_PORT" ] && [ "$NEW_PORT" != "$W3P_NIMBUS_PORT" ]; then
+        OLD_PORT=$W3P_NIMBUS_PORT
+        W3P_NIMBUS_PORT=$NEW_PORT
         save_config
         msg_box "Port Changed" "Nimbus port changed: $OLD_PORT -> $NEW_PORT\n\nUpdate /etc/nftables.conf:\n  Change 'dport $OLD_PORT' to 'dport $NEW_PORT'\n  Then: sudo systemctl restart nftables"
     fi

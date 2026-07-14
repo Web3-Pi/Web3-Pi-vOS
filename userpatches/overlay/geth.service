@@ -11,6 +11,13 @@ Group=el
 Restart=on-failure
 RestartSec=120
 
+# Geth needs time to flush state and close the database cleanly; the systemd
+# default (90 s) then SIGKILLs it, which during snap sync loses the PBSS triedb
+# journal and bricks the datadir ("missing trie node <genesis root>" Fatal on
+# every restart, only cure is removedb + full resync). Seen on w3p-t1 and
+# w3p-t2 2026-07-12/13.
+TimeoutStopSec=600
+
 # Working directory
 WorkingDirectory=/var/lib/el
 
@@ -20,19 +27,23 @@ EnvironmentFile=/opt/web3pi/config
 
 # Geth command
 # Adjust parameters as needed for your setup.
-# GETH_HISTORY_FLAG comes from the EnvironmentFile (/opt/web3pi/config) and holds
-# the chain-history retention flag (e.g. --history.chain=postprague) or is empty.
-# It is referenced WITHOUT braces on purpose: systemd word-splits $VAR, so an empty
-# value expands to zero arguments. ${VAR} (braces) would instead pass a single empty
-# "" argument and break geth startup. Do not add braces here.
+# Config vars use the W3P_ prefix: geth itself scans its environment for GETH_*
+# names and maps them onto flags (GETH_PORT used to be silently applied, unknown
+# ones logged "Unknown config environment variable"). W3P_* keeps our config out
+# of geth's namespace.
+# W3P_GETH_HISTORY_FLAG comes from the EnvironmentFile (/opt/web3pi/config) and
+# holds the chain-history retention flag (e.g. --history.chain=postprague) or is
+# empty. It is referenced WITHOUT braces on purpose: systemd word-splits $VAR, so
+# an empty value expands to zero arguments. ${VAR} (braces) would instead pass a
+# single empty "" argument and break geth startup. Do not add braces here.
 # Change it via control-panel.sh -> Eth Network Configuration -> Geth Chain History.
 ExecStart=/usr/bin/geth \
-    --${NETWORK} \
+    --${W3P_NETWORK} \
     --datadir=/var/lib/el \
     --state.scheme=path \
-    $GETH_HISTORY_FLAG \
-    --port=${GETH_PORT} \
-    --discovery.port=${GETH_PORT} \
+    $W3P_GETH_HISTORY_FLAG \
+    --port=${W3P_GETH_PORT} \
+    --discovery.port=${W3P_GETH_PORT} \
     --http \
     --http.addr=127.0.0.1 \
     --http.port=8545 \

@@ -29,10 +29,10 @@ service_menu() {
             3) service_control "nimbus-validator" "Nimbus Validator" ;;
             4)
                 # Raw unit control only when the config toggle is on: starting
-                # mev-boost while disabled crash-loops (empty MEV_RELAYS) and
+                # mev-boost while disabled crash-loops (empty W3P_MEV_RELAYS) and
                 # would not activate MEV anyway (nimbus flags stay off).
                 load_config
-                if [ "${MEV_BOOST_ENABLED:-false}" != "true" ]; then
+                if [ "${W3P_MEV_BOOST_ENABLED:-false}" != "true" ]; then
                     msg_box "MEV Boost Disabled" "MEV Boost is managed via:\n  Validator Management -> MEV Boost\n\nStarting the raw service while disabled would not\nactivate MEV (Nimbus payload-builder flags stay off)."
                 else
                     service_control "mev-boost" "MEV-Boost"
@@ -41,7 +41,7 @@ service_menu() {
             5) service_logs ;;
             6)
                 load_config
-                if [ "${MEV_BOOST_ENABLED:-false}" = "true" ]; then
+                if [ "${W3P_MEV_BOOST_ENABLED:-false}" = "true" ]; then
                     systemctl start mev-boost geth nimbus-beacon-node
                     msg_box "Services Started" "MEV-Boost, Geth and Nimbus Beacon Node started."
                 else

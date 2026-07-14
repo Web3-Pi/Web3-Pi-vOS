@@ -1,10 +1,10 @@
 # Web3 Pi Staking Configuration
 
 # Network: hoodi, holesky, or mainnet
-NETWORK=hoodi
+W3P_NETWORK=hoodi
 
 # Geth P2P port (TCP/UDP)
-GETH_PORT=30303
+W3P_GETH_PORT=30303
 
 # Geth chain-history retention (disk usage).
 # Full flag passed to geth, or empty to omit it (Geth default = keep all history).
@@ -13,10 +13,10 @@ GETH_PORT=30303
 #   --history.chain=all         keep full history (Geth default, most disk)
 #   (empty)                     do not pass the flag
 # Toggle via control-panel.sh -> Eth Network Configuration -> Geth Chain History.
-GETH_HISTORY_FLAG="--history.chain=postprague"
+W3P_GETH_HISTORY_FLAG="--history.chain=postprague"
 
 # Nimbus P2P port (TCP/UDP)
-NIMBUS_PORT=9000
+W3P_NIMBUS_PORT=9000
 
 # NOTE: If you change ports, update /etc/nftables.conf:
 #   Change 'dport <old_port>' to 'dport <new_port>'
@@ -26,21 +26,21 @@ NIMBUS_PORT=9000
 
 # Validator Configuration
 # Fee recipient address for block rewards (REQUIRED for validator)
-FEE_RECIPIENT=0x0000000000000000000000000000000000000000
+W3P_FEE_RECIPIENT=0x0000000000000000000000000000000000000000
 
 # Graffiti message (max 32 characters, visible in proposed blocks)
-GRAFFITI=Web3Pi
+W3P_GRAFFITI=Web3Pi
 
 # MEV-Boost (external block builder)
 # Toggle + relay list via control-panel.sh -> Validator Management -> MEV Boost.
-MEV_BOOST_ENABLED=false
+W3P_MEV_BOOST_ENABLED=false
 
 # Comma-separated relay URLs (https://0x<pubkey>@host). Network-specific:
-# switching NETWORK resets this to the new network's defaults.
-MEV_RELAYS="https://0xafa4c6985aa049fb79dd37010438cfebeb0f2bd42b115b89dd678dab0670c1de38da0c4e9138c9290a398ecd9a0b3110@boost-relay-hoodi.flashbots.net,https://0x98f0ef62f00780cf8eb06701a7d22725b9437d4768bb19b363e882ae87129945ec206ec2dc16933f31d983f8225772b6@hoodi.aestus.live,https://0xaa58208899c6105603b74396734a6263cc7d947f444f396a90f7b7d3e65d102aec7e5e5291b27e08d02c50a050825c2f@hoodi.titanrelay.xyz,https://0x821f2a65afb70e7f2e820a925a9b4c80a159620582c1766b1b09729fec178b11ea22abb3a51f07b288be815a1a2ff516@bloxroute.hoodi.blxrbdn.com"
+# switching W3P_NETWORK resets this to the new network's defaults.
+W3P_MEV_RELAYS="https://0xafa4c6985aa049fb79dd37010438cfebeb0f2bd42b115b89dd678dab0670c1de38da0c4e9138c9290a398ecd9a0b3110@boost-relay-hoodi.flashbots.net,https://0x98f0ef62f00780cf8eb06701a7d22725b9437d4768bb19b363e882ae87129945ec206ec2dc16933f31d983f8225772b6@hoodi.aestus.live,https://0xaa58208899c6105603b74396734a6263cc7d947f444f396a90f7b7d3e65d102aec7e5e5291b27e08d02c50a050825c2f@hoodi.titanrelay.xyz,https://0x821f2a65afb70e7f2e820a925a9b4c80a159620582c1766b1b09729fec178b11ea22abb3a51f07b288be815a1a2ff516@bloxroute.hoodi.blxrbdn.com"
 
-# Derived from MEV_BOOST_ENABLED — do not edit by hand (rewritten on every
+# Derived from W3P_MEV_BOOST_ENABLED — do not edit by hand (rewritten on every
 # config save). The nimbus units reference these WITHOUT braces so an empty
-# value expands to zero arguments (same trick as GETH_HISTORY_FLAG above).
-MEV_BOOST_BN_FLAGS=""
-MEV_BOOST_VC_FLAGS=""
+# value expands to zero arguments (same trick as W3P_GETH_HISTORY_FLAG above).
+W3P_MEV_BOOST_BN_FLAGS=""
+W3P_MEV_BOOST_VC_FLAGS=""

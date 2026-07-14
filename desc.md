@@ -549,25 +549,47 @@ Central configuration is stored at `/opt/web3pi/config`:
 
 ```bash
 # Web3 Pi Staking Configuration
+# All keys use the W3P_ prefix: geth maps GETH_*-named environment variables
+# onto its own flags, so unprefixed names collide with its namespace.
 
 # Network: hoodi, holesky, or mainnet
-NETWORK=hoodi
+W3P_NETWORK=hoodi
 
 # Geth P2P port (TCP/UDP)
-GETH_PORT=30303
+W3P_GETH_PORT=30303
 
 # Nimbus P2P port (TCP/UDP)
-NIMBUS_PORT=9000
+W3P_NIMBUS_PORT=9000
 
 # Validator Configuration
 # Fee recipient address for block rewards (REQUIRED for validator)
-FEE_RECIPIENT=0x0000000000000000000000000000000000000000
+W3P_FEE_RECIPIENT=0x0000000000000000000000000000000000000000
 
 # Graffiti message (max 32 characters, visible in proposed blocks)
-GRAFFITI=Web3Pi
+W3P_GRAFFITI=Web3Pi
 ```
 
 This file is sourced by all systemd service files via `EnvironmentFile=`.
+
+**Key naming (2026-07-13):** keys were renamed from unprefixed (`NETWORK`,
+`GETH_PORT`, …) to `W3P_*`. Geth scans its environment for `GETH_*` variables
+and maps them onto its own flags — `GETH_PORT` was silently consumed and
+`GETH_HISTORY_FLAG` produced a `WARN Unknown config environment variable` on
+every start. Devices flashed before the rename are migrated in place: the
+control panel's `load_config` maps legacy keys onto the `W3P_*` names and the
+next `save_config` rewrites the file. The dashboard's network collector also
+accepts both spellings.
+
+When updating units/scripts **in place** on a device (rsync/scp instead of a
+re-flash), migrate the config before restarting services — with the old file
+the units resolve empty `W3P_*` variables and geth gets broken arguments
+(`--`, `--port=`):
+
+```bash
+sudo sed -i -E 's/^(NETWORK|GETH_PORT|GETH_HISTORY_FLAG|NIMBUS_PORT|FEE_RECIPIENT|GRAFFITI|MEV_BOOST_ENABLED|MEV_RELAYS|MEV_BOOST_BN_FLAGS|MEV_BOOST_VC_FLAGS)=/W3P_\1=/' /opt/web3pi/config
+sudo systemctl daemon-reload
+sudo systemctl restart geth nimbus-beacon-node
+```
 
 ---
 

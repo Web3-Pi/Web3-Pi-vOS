@@ -14,6 +14,11 @@ Group=cl
 Restart=on-failure
 RestartSec=120
 
+# Nimbus checkpoints its database on shutdown; under heavy backfill + swap this
+# can exceed the systemd default 90 s and a SIGKILL mid-checkpoint risks a slow
+# recovery on next start. Give it headroom.
+TimeoutStopSec=300
+
 # Working directory
 WorkingDirectory=/var/lib/cl
 
@@ -23,13 +28,13 @@ EnvironmentFile=/opt/web3pi/config
 
 # Nimbus beacon node command
 # Adjust parameters as needed for your setup.
-# MEV_BOOST_BN_FLAGS comes from the EnvironmentFile (/opt/web3pi/config): either
-# "--payload-builder=true --payload-builder-url=http://127.0.0.1:18550" or empty.
-# Referenced WITHOUT braces on purpose: systemd word-splits $VAR, so an empty
-# value expands to zero arguments (same as GETH_HISTORY_FLAG in geth.service).
-# Toggle via control-panel.sh -> Validator Management -> MEV Boost.
+# W3P_MEV_BOOST_BN_FLAGS comes from the EnvironmentFile (/opt/web3pi/config):
+# either "--payload-builder=true --payload-builder-url=http://127.0.0.1:18550"
+# or empty. Referenced WITHOUT braces on purpose: systemd word-splits $VAR, so an
+# empty value expands to zero arguments (same as W3P_GETH_HISTORY_FLAG in
+# geth.service). Toggle via control-panel.sh -> Validator Management -> MEV Boost.
 ExecStart=/usr/bin/nimbus_beacon_node \
-    --network=${NETWORK} \
+    --network=${W3P_NETWORK} \
     --data-dir=/var/lib/cl \
     --el=http://127.0.0.1:8551 \
     --jwt-secret=/etc/web3pi/jwt.hex \
@@ -37,10 +42,10 @@ ExecStart=/usr/bin/nimbus_beacon_node \
     --rest-address=127.0.0.1 \
     --rest-port=5052 \
     --rest-allow-origin='*' \
-    --tcp-port=${NIMBUS_PORT} \
-    --udp-port=${NIMBUS_PORT} \
+    --tcp-port=${W3P_NIMBUS_PORT} \
+    --udp-port=${W3P_NIMBUS_PORT} \
     --enr-auto-update \
-    $MEV_BOOST_BN_FLAGS
+    $W3P_MEV_BOOST_BN_FLAGS
 
 # Soft memory ceiling: under prolonged non-finality the beacon's memory can
 # balloon; reclaim pressure beats the OOM-killer picking it (M5 plan v2 §5.9).

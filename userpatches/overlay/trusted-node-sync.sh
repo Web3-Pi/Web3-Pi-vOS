@@ -16,14 +16,17 @@ if [ -f "$CONFIG_FILE" ]; then
     source "$CONFIG_FILE"
 fi
 
-NETWORK="${1:-${NETWORK:-hoodi}}"
+# Network precedence: argument > W3P_NETWORK from config > legacy NETWORK key
+# (config written before the 2026-07 W3P_ rename) > hoodi. This script sources
+# the config directly (no control-panel shim), so it needs its own fallback.
+W3P_NETWORK="${1:-${W3P_NETWORK:-${NETWORK:-hoodi}}}"
 SERVER="$2"
 DATA_DIR="/var/lib/cl"
-SERVERS_FILE="/opt/web3pi/servers_${NETWORK}.txt"
+SERVERS_FILE="/opt/web3pi/servers_${W3P_NETWORK}.txt"
 
 # Validate network parameter
-if [[ "$NETWORK" != "hoodi" && "$NETWORK" != "holesky" && "$NETWORK" != "mainnet" ]]; then
-    echo "Error: Invalid network '$NETWORK'. Use 'hoodi', 'holesky', or 'mainnet'."
+if [[ "$W3P_NETWORK" != "hoodi" && "$W3P_NETWORK" != "holesky" && "$W3P_NETWORK" != "mainnet" ]]; then
+    echo "Error: Invalid network '$W3P_NETWORK'. Use 'hoodi', 'holesky', or 'mainnet'."
     exit 1
 fi
 
@@ -34,7 +37,7 @@ if [ -z "$SERVER" ] && [ ! -f "$SERVERS_FILE" ]; then
 fi
 
 echo "============================================================"
-echo "  TRUSTED NODE SYNC - $NETWORK"
+echo "  TRUSTED NODE SYNC - $W3P_NETWORK"
 echo "============================================================"
 echo ""
 echo "  Data directory: $DATA_DIR"
@@ -46,7 +49,7 @@ run_sync() {
     echo "Syncing from: $url"
     echo ""
     sudo -u cl nimbus_beacon_node trustedNodeSync \
-        --network="$NETWORK" \
+        --network="$W3P_NETWORK" \
         --data-dir="$DATA_DIR" \
         --trusted-node-url="$url" \
         --backfill=false
