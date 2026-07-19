@@ -354,11 +354,25 @@ class NetCollector(Collector):
         return out
 
 
-# --- journal logs ----------------------------------------------------------------
+# --- journal logs + kernel ring buffer -------------------------------------------
 
-LOG_UNITS = ("geth", "nimbus-beacon-node", "nimbus-validator", "w3p-failover")
+# journal units plus "dmesg" — one more log source in the same unit selector
+LOG_UNITS = ("geth", "nimbus-beacon-node", "nimbus-validator", "w3p-failover",
+             "dmesg")
 _LVL_BAD = re.compile(r"\b(ERROR|ERR|CRIT|FATAL|Error|error|panic)\b")
 _LVL_WARN = re.compile(r"\b(WARN|WRN|Warn|warn(?:ing)?|NTC)\b")
+# kernel messages carry no journal-style level tags — match kernel phrasing
+_DMESG_BAD = re.compile(r"(?i)\b(error|fail(?:ed|ure)?|oops|panic|segfault|"
+                        r"under-?voltage|corrupt(?:ed|ion)?|call trace)\b")
+DMESG_KEEP = 400
+
+
+def _level(raw, bad_re):
+    if bad_re.search(raw):
+        return "bad"
+    if _LVL_WARN.search(raw):
+        return "warn"
+    return "info"
 
 
 class LogsCollector(Collector):
@@ -371,17 +385,15 @@ class LogsCollector(Collector):
 
     def collect(self):
         unit = self.unit
-        out = run_cmd(["journalctl", "-u", unit, "-n", "200", "--no-pager",
-                       "-o", "short-iso", "--no-hostname"], timeout=4)
-        lines = []
-        for raw in (out or "").splitlines():
-            if raw.startswith("--"):    # "-- No entries --" / boot markers
-                continue
-            level = "info"
-            if _LVL_BAD.search(raw):
-                level = "bad"
-            elif _LVL_WARN.search(raw):
-                level = "warn"
-            lines.append((level, raw))
+        if unit == "dmesg":
+            out = run_cmd(["dmesg", "-T", "--color=never"], timeout=5)
+            lines = [(_level(raw, _DMESG_BAD), raw)
+                     for raw in (out or "").splitlines()[-DMESG_KEEP:]]
+        else:
+            out = run_cmd(["journalctl", "-u", unit, "-n", "200", "--no-pager",
+                           "-o", "short-iso", "--no-hostname"], timeout=4)
+            lines = [(_level(raw, _LVL_BAD), raw)
+                     for raw in (out or "").splitlines()
+                     if not raw.startswith("--")]   # "-- No entries --"
         return {"unit": unit, "lines": lines,
                 "available": bool(out.strip()) if out else False}

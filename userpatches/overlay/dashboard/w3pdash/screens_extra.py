@@ -371,14 +371,18 @@ def render_logs(win, ctx):
     if w - 1 - len(hint) > x:
         put_r(win, 1, w - 1, hint, color(DIM))
 
-    iy, ix, ih, iw = box(win, 2, 0, h - 3, w, "journal - %s" % unit)
+    title = "dmesg -T" if unit == "dmesg" else "journal - %s" % unit
+    iy, ix, ih, iw = box(win, 2, 0, h - 3, w, title)
     lines = logs.get("lines") or []
     if logs.get("unit") != unit:
         put(win, iy, ix, "loading %s ..." % unit, color(DIM))
         return
     if not lines:
-        put(win, iy, ix, "no journal entries (permissions? run as root "
-            "or add user to systemd-journal group)", color(WARN))
+        msg = ("no dmesg output (kernel.dmesg_restrict? run as root)"
+               if unit == "dmesg" else
+               "no journal entries (permissions? run as root "
+               "or add user to systemd-journal group)")
+        put(win, iy, ix, msg, color(WARN))
         return
     scroll = ctx.get("log_scroll", 0)
     end = len(lines) - scroll
@@ -395,7 +399,7 @@ def render_logs(win, ctx):
 
 HELP_LINES = (
     ("1-5", "switch tab (Tab / Shift-Tab cycles)"),
-    ("left/right", "Logs tab: switch journal unit"),
+    ("left/right", "Logs tab: switch log source"),
     ("up/down PgUp/Dn", "Logs tab: scroll; End = follow"),
     ("p", "pause / resume screen updates"),
     ("g", "cycle graph style (braille / block / ascii)"),
